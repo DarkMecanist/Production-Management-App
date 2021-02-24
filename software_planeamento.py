@@ -14,7 +14,8 @@ from docx.shared import Cm, Mm
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from PIL import Image, ImageDraw, ImageFont
 from fpdf import FPDF
-from itertools import combinations
+from itertools import combinations, cycle
+import xlsxwriter as xls
 
 kivy.require('1.11.0')
 from kivy.config import Config
@@ -32,6 +33,66 @@ from kivy.uix.dropdown import DropDown
 from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
 from kivy.core.window import Window
 from kivy.app import App
+
+
+def is_last_index_list(item, any_list):
+    last_index = len(any_list) - 1
+
+    if item == any_list[last_index]:
+        return True
+
+    return False
+
+
+def round_time(time_string):
+    """Rounds time to 15 minute intervals. Ex 9:11 → 9:15"""
+
+    hour = time_string.split(':')[0]
+    minutes = int(time_string.split(':')[1])
+    if minutes > 0 and minutes < 15:
+        new_minutes = '15'
+        time_string = hour + ':' + new_minutes
+    elif minutes > 15 and minutes < 30:
+        new_minutes = '30'
+        time_string = hour + ':' + new_minutes
+    elif minutes > 30 and minutes < 45:
+        new_minutes = '45'
+        time_string = hour + ':' + new_minutes
+    elif minutes > 45:
+        new_minutes = '00'
+        if hour == '23':
+            new_hour = '00'
+        else:
+            new_hour = str(int(hour)+1)
+
+        time_string = new_hour + ':' + new_minutes
+
+    return time_string
+
+
+def return_times_between_times(time_start, time_finish, interval_step):
+    times_list = []
+
+    duration = time_finish - time_start
+    num_times = round((duration / interval_step) + 1)
+
+    for _ in range(num_times):
+        times_list.append(time_start)
+        time_start += interval_step
+
+    return times_list
+
+
+def is_weekday(day):
+    '''checks if an day object is a week day. If it isn't, it outputs the next week day'''
+    weekday = datetime.datetime.weekday(day)
+    if weekday < 5:
+        return True
+    else:
+        return False
+
+
+
 
 
 def check_date_is_valid(date_string):
@@ -560,6 +621,45 @@ def change_value_material_database(value, field, rowid):
             cursor.execute('''update materials set date_modified = :date_modified where rowid = :rowid''', {'date_modified': value, 'rowid': rowid})
 
 
+def load_shifts(machine=None):
+    if machine == None:
+        cursor.execute('''select * from shifts''')
+    else:
+        cursor.execute('''select * from shifts where machine = :machine''', {'machine': machine})
+
+    return cursor.fetchall()
+
+
+def insert_new_shift(machine, time_start, time_finish, time_break, break_duration):
+    cursor.execute('''insert into shifts values(:machine, :time_start, :time_finish, :time_break, :break_duration)''',
+                   {'machine': machine,
+                    'time_start': time_start,
+                    'time_finish': time_finish,
+                    'time_break': time_break,
+                    'break_duration': break_duration})
+
+
+def remove_shifts(rowid=''):
+    if rowid == '':
+        with conn:
+            cursor.execute('delete from shifts')
+    else:
+        with conn:
+            cursor.execute('delete from shifts where rowid = :rowid', {'rowid': rowid})
+
+
+def change_value_shifts_database(value, field, rowid):
+    with conn:
+        if field == 'time_start':
+            cursor.execute('update shifts set time_start = :time_start where rowid = :rowid', {'time_start': value, 'rowid': rowid})
+        elif field == 'time_finish':
+            cursor.execute('update shifts set time_finish = :time_finish where rowid = :rowid', {'time_finish': value, 'rowid': rowid})
+        elif field == 'time_break':
+            cursor.execute('update shifts set time_break = :time_break where rowid = :rowid', {'time_break': value, 'rowid': rowid})
+        elif field == 'break_duration':
+            cursor.execute('update shifts set break_duration = :break_duration where rowid = :rowid', {'break_duration': value, 'rowid': rowid})
+
+
 def convert_rgb_to_kivy_float(rgb_tuple):
     converted_tuple = []
 
@@ -569,6 +669,504 @@ def convert_rgb_to_kivy_float(rgb_tuple):
     converted_tuple.append(1)
 
     return tuple(converted_tuple)
+
+
+class Planning(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.shifts_LF = load_shifts('LF3015')
+        self.shifts_LC5 = load_shifts('LC5')
+        self.added_shifts_LF = []
+        self.added_shifts_LC5 = []
+
+        self.orientation = 'vertical'
+
+        current_date = datetime.datetime.now()
+
+        self.label_machine_LF = Label(text='LF-3015', font_size='20')
+        self.row_main_info_LF = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        self.label_num_shifts_LF = Label(text=f'Nº Turnos:   {str(len(self.shifts_LF))}    ', size_hint_x=0.3)
+        self.label_time_start_plan_LF = Label(text='Hora de Início (HH:MM): ')
+        self.ti_time_start_plan_LF = TextInput(text=f'{current_date.hour}:{current_date.minute}', size_hint_x=0.2)
+        self.label_date_start_plan_LF = Label(text='Data de Início (DD/MM/AAAA): ')
+        self.ti_date_start_plan_LF = TextInput(text=f'{current_date.day}/{current_date.month}/{current_date.year}', size_hint_x=0.3)
+        self.button_remove_shift_LF = Button(text='-', background_color=color_dark_red, size_hint_x=0.1)
+        self.button_add_shift_LF = Button(text='+', background_color=color_light_green, size_hint_x=0.1)
+
+        self.layout_shifts_LF = BoxLayout(orientation='vertical')
+
+        self.label_machine_LC5 = Label(text='LC5', font_size='20')
+        self.row_main_info_LC5 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        self.label_num_shifts_LC5 = Label(text=f'Nº Turnos:   {str(len(self.shifts_LC5))}    ', size_hint_x=0.3)
+        self.label_time_start_plan_LC5 = Label(text='Hora de Início (HH:MM): ')
+        self.ti_time_start_plan_LC5 = TextInput(text=f'{current_date.hour}:{current_date.minute}', size_hint_x=0.2)
+        self.label_date_start_plan_LC5 = Label(text='Data de Início (DD/MM/AAAA): ')
+        self.ti_date_start_plan_LC5 = TextInput(text=f'{current_date.day}/{current_date.month}/{current_date.year}', size_hint_x=0.3)
+        self.button_remove_shift_LC5 = Button(text='-', background_color=color_dark_red, size_hint_x=0.1)
+        self.button_add_shift_LC5 = Button(text='+', background_color=color_light_green, size_hint_x=0.1)
+
+        self.layout_shifts_LF = BoxLayout(orientation='vertical')
+        self.header_layout_shifts_LF = BoxLayout(orientation='horizontal')
+        self.header_layout_id_LF = Label(text='ID')
+        self.header_layout_time_start_LF = Label(text='Hora Início (HH:MM)')
+        self.header_layout_time_finish_LF = Label(text='Hora Fim (HH:MM)')
+        self.header_layout_time_break_LF = Label(text='Hora Pausa (HH:MM)')
+        self.header_layout_dur_break_LF = Label(text='Dur. Pausa (min)')
+
+        self.layout_shifts_LC5 = BoxLayout(orientation='vertical')
+        self.header_layout_shifts_LC5 = BoxLayout(orientation='horizontal')
+        self.header_layout_id_LC5 = Label(text='ID')
+        self.header_layout_time_start_LC5 = Label(text='Hora Início (HH:MM)')
+        self.header_layout_time_finish_LC5 = Label(text='Hora Fim (HH:MM)')
+        self.header_layout_time_break_LC5 = Label(text='Hora Pausa (HH:MM)')
+        self.header_layout_dur_break_LC5 = Label(text='Dur. Pausa (min)')
+
+        self.row_buttons = BoxLayout(orientation='horizontal', size_hint_y=0.5)
+        self.button_return = Button(text='<<<', background_color=color_light_blue)
+        self.button_submit = Button(text='Ok', background_color=color_light_blue)
+
+        self.button_add_shift_LF.bind(on_press=lambda x: self.add_shift('LF3015'))
+        self.button_add_shift_LC5.bind(on_press=lambda x: self.add_shift('LC5'))
+        self.button_remove_shift_LF.bind(on_press=lambda x: self.remove_shift('LF3015'))
+        self.button_remove_shift_LC5.bind(on_press=lambda x: self.remove_shift('LC5'))
+        self.button_return.bind(on_press=self.close_popup_window)
+        self.button_submit.bind(on_press=self.validate_data)
+
+        self.row_main_info_LF.add_widget(self.label_num_shifts_LF)
+        self.row_main_info_LF.add_widget(self.button_remove_shift_LF)
+        self.row_main_info_LF.add_widget(self.button_add_shift_LF)
+        self.row_main_info_LF.add_widget(self.label_time_start_plan_LF)
+        self.row_main_info_LF.add_widget(self.ti_time_start_plan_LF)
+        self.row_main_info_LF.add_widget(self.label_date_start_plan_LF)
+        self.row_main_info_LF.add_widget(self.ti_date_start_plan_LF)
+        self.row_main_info_LF.add_widget(Label(size_hint_x=1))
+
+        self.row_main_info_LC5.add_widget(self.label_num_shifts_LC5)
+        self.row_main_info_LC5.add_widget(self.button_remove_shift_LC5)
+        self.row_main_info_LC5.add_widget(self.button_add_shift_LC5)
+        self.row_main_info_LC5.add_widget(self.label_time_start_plan_LC5)
+        self.row_main_info_LC5.add_widget(self.ti_time_start_plan_LC5)
+        self.row_main_info_LC5.add_widget(self.label_date_start_plan_LC5)
+        self.row_main_info_LC5.add_widget(self.ti_date_start_plan_LC5)
+        self.row_main_info_LC5.add_widget(Label(size_hint_x=1))
+
+        self.header_layout_shifts_LF.add_widget(self.header_layout_id_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_time_start_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_time_finish_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_time_break_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_dur_break_LF)
+        self.layout_shifts_LF.add_widget(self.header_layout_shifts_LF)
+
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_id_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_time_start_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_time_finish_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_time_break_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_dur_break_LC5)
+        self.layout_shifts_LC5.add_widget(self.header_layout_shifts_LC5)
+
+        self.row_buttons.add_widget(self.button_return)
+        self.row_buttons.add_widget(self.button_submit)
+
+        self.add_widget(self.label_machine_LF)
+        self.add_widget(self.row_main_info_LF)
+        self.add_widget(self.layout_shifts_LF)
+        self.add_widget(Label(size_hint_y=0.1))
+        self.add_widget(self.label_machine_LC5)
+        self.add_widget(self.row_main_info_LC5)
+        self.add_widget(self.layout_shifts_LC5)
+        self.add_widget(Label(size_hint_y=0.1))
+        self.add_widget(self.row_buttons)
+
+        self.update_shifts_layout('LF3015')
+        self.update_shifts_layout('LC5')
+
+    def close_popup_window(self, *args):
+        production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.pop_plan_tasks.dismiss()
+
+    def update_shifts_layout(self, machine):
+        if machine == 'LF3015':
+            for shift in self.added_shifts_LF:
+                self.layout_shifts_LF.remove_widget(shift)
+
+            counter = 1
+            for shift in self.shifts_LF:
+                new_shift = Shift(counter, shift[0], shift[1], shift[2], shift[3], shift[4])
+                self.layout_shifts_LF.add_widget(new_shift)
+                self.added_shifts_LF.append(new_shift)
+                counter += 1
+        else:
+            for shift in self.added_shifts_LC5:
+                self.layout_shifts_LC5.remove_widget(shift)
+
+            counter = 1
+            for shift in self.shifts_LC5:
+                new_shift = Shift(counter, shift[0], shift[1], shift[2], shift[3], shift[4])
+                self.layout_shifts_LC5.add_widget(new_shift)
+                self.added_shifts_LC5.append(new_shift)
+                counter += 1
+
+    def add_shift(self, machine):
+        if machine == 'LF3015':
+            if len(self.added_shifts_LF) == 3:
+                return None
+            else:
+                new_shift = Shift()
+                self.added_shifts_LF.append(new_shift)
+                new_shift.shift_id = str(self.added_shifts_LF.index(new_shift) + 1)
+                new_shift.label_id.text = f'T{new_shift.shift_id}'
+                self.layout_shifts_LF.add_widget(new_shift)
+
+        else:
+            if len(self.added_shifts_LC5) == 3:
+                return None
+            else:
+                new_shift = Shift()
+                self.added_shifts_LC5.append(new_shift)
+                new_shift.shift_id = str(self.added_shifts_LC5.index(new_shift) + 1)
+                new_shift.label_id.text = f'T{new_shift.shift_id}'
+                self.layout_shifts_LC5.add_widget(new_shift)
+
+        self.update_num_shifts_label(machine)
+
+    def remove_shift(self, machine):
+
+        if machine == 'LF3015':
+            if len(self.added_shifts_LF) == 1:
+                return None
+            else:
+                self.layout_shifts_LF.remove_widget(self.added_shifts_LF[-1])
+                self.added_shifts_LF.remove(self.added_shifts_LF[-1])
+
+        else:
+            if len(self.added_shifts_LC5) == 1:
+                return None
+            else:
+                self.layout_shifts_LC5.remove_widget(self.added_shifts_LC5[-1])
+                self.added_shifts_LC5.remove(self.added_shifts_LC5[-1])
+
+        self.update_num_shifts_label(machine)
+
+    def update_num_shifts_label(self, machine):
+
+        if machine == 'LF3015':
+            self.label_num_shifts_LF.text = f'Nº Turnos:   {str(len(self.added_shifts_LF))}'
+        else:
+            self.label_num_shifts_LC5.text = f'Nº Turnos:   {str(len(self.added_shifts_LC5))}'
+
+    def validate_data(self, *args):
+        total_added_shifts = self.added_shifts_LF + self.added_shifts_LC5
+        valid_time = True
+        valid_date_LF = check_date_is_valid(self.ti_date_start_plan_LF.text)
+        valid_date_LC5 = check_date_is_valid(self.ti_date_start_plan_LC5.text)
+
+        for added_shift in total_added_shifts:
+            is_valid_1 = self.check_valid_time(added_shift.ti_time_start.text)
+            is_valid_2 = self.check_valid_time(added_shift.ti_time_finish.text)
+            is_valid_3 = self.check_valid_time(added_shift.ti_time_break.text)
+            is_valid_4 = self.check_valid_time(self.ti_time_start_plan_LF.text)
+            is_valid_5 = self.check_valid_time(self.ti_time_start_plan_LC5.text)
+
+            if is_valid_1 == False or is_valid_2 == False or is_valid_3 == False or is_valid_4 == False or is_valid_5 == False:
+                valid_time = False
+                break
+
+            valid_minutes = self.check_valid_minutes(added_shift.ti_break_duration.text)
+
+            if valid_minutes == False:
+                break
+
+        if valid_time and valid_minutes and valid_date_LF and valid_date_LC5:
+            production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.plan_selected_tasks(self.ti_time_start_plan_LF.text, self.ti_time_start_plan_LC5.text, self.ti_date_start_plan_LF.text, self.ti_date_start_plan_LC5.text)
+            production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.pop_plan_tasks.dismiss()
+
+        else:
+            self.popup_warning_delete = PopupWarningMessage(message='Alguma coisa está mal preenchida', type='warning')
+            self.popup_warning_delete.open()
+
+    def check_valid_time(self, time_string):
+        num_list = time_string.split(':')
+
+        if len(num_list) != 2:
+            return False
+
+        for num in num_list:
+            try:
+                int(num)
+            except ValueError:
+                return False
+
+        if int(num_list[0]) < 0 or int(num_list[0]) > 24 or int(num_list[1]) < 0 or int(num_list[1]) > 60:
+            return False
+
+        return True
+
+    def check_valid_minutes(self, minutes):
+        try:
+            int(minutes)
+        except ValueError:
+            return False
+
+        if int(minutes) < 0 or int(minutes) > 60:
+            return False
+
+        return True
+
+
+class Shift(BoxLayout):
+    def __init__(self, shift_id=0, machine='', time_start='', time_finish='', time_break='', break_duration='', **kwargs):
+        super().__init__(**kwargs)
+
+        self.orientation = 'horizontal'
+
+        self.shift_id = shift_id
+        self.machine = machine
+        self.time_start = time_start
+        self.time_finish = time_finish
+        self.time_break = time_break
+        self.break_duration = break_duration
+
+        self.label_id = Label(text=f'T{self.shift_id}')
+        self.ti_time_start = TextInput(text=self.time_start)
+        self.ti_time_finish = TextInput(text=self.time_finish)
+        self.ti_time_break = TextInput(text=self.time_break)
+        self.ti_break_duration = TextInput(text=str(self.break_duration))
+
+        self.add_widget(self.label_id)
+        self.add_widget(self.ti_time_start)
+        self.add_widget(self.ti_time_finish)
+        self.add_widget(self.ti_time_break)
+        self.add_widget(self.ti_break_duration)
+
+
+class Shiftspage(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.shifts_LF = load_shifts('LF3015')
+        self.shifts_LC5 = load_shifts('LC5')
+        self.added_shifts_LF = []
+        self.added_shifts_LC5 = []
+
+        self.orientation = 'vertical'
+
+        self.label_machine_LF = Label(text='LF-3015', font_size='20')
+        self.row_main_info_LF = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        self.label_num_shifts_LF = Label(text=f'Nº Turnos:   {str(len(self.shifts_LF))}', size_hint_x=0.2)
+        self.button_remove_shift_LF = Button(text='-', background_color=color_dark_red, size_hint_x=0.1)
+        self.button_add_shift_LF = Button(text='+', background_color=color_light_green, size_hint_x=0.1)
+
+        self.layout_shifts_LF = BoxLayout(orientation='vertical')
+
+        self.label_machine_LC5 = Label(text='LC5', font_size='20')
+        self.row_main_info_LC5 = BoxLayout(orientation='horizontal', size_hint_y=0.3)
+        self.label_num_shifts_LC5 = Label(text=f'Nº Turnos:   {str(len(self.shifts_LC5))}', size_hint_x=0.2)
+        self.button_remove_shift_LC5 = Button(text='-', background_color=color_dark_red, size_hint_x=0.1)
+        self.button_add_shift_LC5 = Button(text='+', background_color=color_light_green, size_hint_x=0.1)
+
+        self.layout_shifts_LF = BoxLayout(orientation='vertical')
+        self.header_layout_shifts_LF = BoxLayout(orientation='horizontal')
+        self.header_layout_id_LF = Label(text='ID')
+        self.header_layout_time_start_LF = Label(text='Hora Início (HH:MM)')
+        self.header_layout_time_finish_LF = Label(text='Hora Fim (HH:MM)')
+        self.header_layout_time_break_LF = Label(text='Hora Pausa (HH:MM)')
+        self.header_layout_dur_break_LF = Label(text='Dur. Pausa (min)')
+
+        self.layout_shifts_LC5 = BoxLayout(orientation='vertical')
+        self.header_layout_shifts_LC5 = BoxLayout(orientation='horizontal')
+        self.header_layout_id_LC5 = Label(text='ID')
+        self.header_layout_time_start_LC5 = Label(text='Hora Início (HH:MM)')
+        self.header_layout_time_finish_LC5 = Label(text='Hora Fim (HH:MM)')
+        self.header_layout_time_break_LC5 = Label(text='Hora Pausa (HH:MM)')
+        self.header_layout_dur_break_LC5 = Label(text='Dur. Pausa (min)')
+
+        self.row_buttons = BoxLayout(orientation='horizontal', size_hint_y=0.5)
+        self.button_return = Button(text='<<<', background_color=color_light_blue)
+        self.button_submit = Button(text='Ok', background_color=color_light_blue)
+
+        self.button_add_shift_LF.bind(on_press=lambda x: self.add_shift('LF3015'))
+        self.button_add_shift_LC5.bind(on_press=lambda x: self.add_shift('LC5'))
+        self.button_remove_shift_LF.bind(on_press=lambda x: self.remove_shift('LF3015'))
+        self.button_remove_shift_LC5.bind(on_press=lambda x: self.remove_shift('LC5'))
+        self.button_return.bind(on_press=self.close_popup_window)
+        self.button_submit.bind(on_press=self.validate_data)
+
+        self.row_main_info_LF.add_widget(self.label_num_shifts_LF)
+        self.row_main_info_LF.add_widget(self.button_remove_shift_LF)
+        self.row_main_info_LF.add_widget(self.button_add_shift_LF)
+        self.row_main_info_LF.add_widget(Label(size_hint_x=1))
+
+        self.row_main_info_LC5.add_widget(self.label_num_shifts_LC5)
+        self.row_main_info_LC5.add_widget(self.button_remove_shift_LC5)
+        self.row_main_info_LC5.add_widget(self.button_add_shift_LC5)
+        self.row_main_info_LC5.add_widget(Label(size_hint_x=1))
+
+        self.header_layout_shifts_LF.add_widget(self.header_layout_id_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_time_start_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_time_finish_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_time_break_LF)
+        self.header_layout_shifts_LF.add_widget(self.header_layout_dur_break_LF)
+        self.layout_shifts_LF.add_widget(self.header_layout_shifts_LF)
+
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_id_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_time_start_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_time_finish_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_time_break_LC5)
+        self.header_layout_shifts_LC5.add_widget(self.header_layout_dur_break_LC5)
+        self.layout_shifts_LC5.add_widget(self.header_layout_shifts_LC5)
+
+        self.row_buttons.add_widget(self.button_return)
+        self.row_buttons.add_widget(self.button_submit)
+
+        self.add_widget(self.label_machine_LF)
+        self.add_widget(self.row_main_info_LF)
+        self.add_widget(self.layout_shifts_LF)
+        self.add_widget(Label(size_hint_y=0.1))
+        self.add_widget(self.label_machine_LC5)
+        self.add_widget(self.row_main_info_LC5)
+        self.add_widget(self.layout_shifts_LC5)
+        self.add_widget(Label(size_hint_y=0.1))
+        self.add_widget(self.row_buttons)
+
+        self.update_shifts_layout('LF3015')
+        self.update_shifts_layout('LC5')
+
+    def close_popup_window(self, *args):
+        production_planning.homepage.layout_sidebar.pop_shifts.dismiss()
+
+
+    def update_shifts_layout(self, machine):
+        if machine == 'LF3015':
+            for shift in self.added_shifts_LF:
+                self.layout_shifts_LF.remove_widget(shift)
+
+            counter = 1
+            for shift in self.shifts_LF:
+                new_shift = Shift(counter, shift[0], shift[1], shift[2], shift[3], shift[4])
+                self.layout_shifts_LF.add_widget(new_shift)
+                self.added_shifts_LF.append(new_shift)
+                counter += 1
+        else:
+            for shift in self.added_shifts_LC5:
+                self.layout_shifts_LC5.remove_widget(shift)
+
+            counter = 1
+            for shift in self.shifts_LC5:
+                new_shift = Shift(counter, shift[0], shift[1], shift[2], shift[3], shift[4])
+                self.layout_shifts_LC5.add_widget(new_shift)
+                self.added_shifts_LC5.append(new_shift)
+                counter += 1
+
+    def add_shift(self, machine):
+        if machine == 'LF3015':
+            if len(self.added_shifts_LF) == 3:
+                return None
+            else:
+                new_shift = Shift()
+                self.added_shifts_LF.append(new_shift)
+                new_shift.shift_id = str(self.added_shifts_LF.index(new_shift) + 1)
+                new_shift.label_id.text = f'T{new_shift.shift_id}'
+                self.layout_shifts_LF.add_widget(new_shift)
+
+        else:
+            if len(self.added_shifts_LC5) == 3:
+                return None
+            else:
+                new_shift = Shift()
+                self.added_shifts_LC5.append(new_shift)
+                new_shift.shift_id = str(self.added_shifts_LC5.index(new_shift) + 1)
+                new_shift.label_id.text = f'T{new_shift.shift_id}'
+                self.layout_shifts_LC5.add_widget(new_shift)
+
+        self.update_num_shifts_label(machine)
+
+    def remove_shift(self, machine):
+
+        if machine == 'LF3015':
+            if len(self.added_shifts_LF) == 1:
+                return None
+            else:
+                self.layout_shifts_LF.remove_widget(self.added_shifts_LF[-1])
+                self.added_shifts_LF.remove(self.added_shifts_LF[-1])
+
+        else:
+            if len(self.added_shifts_LC5) == 1:
+                return None
+            else:
+                self.layout_shifts_LC5.remove_widget(self.added_shifts_LC5[-1])
+                self.added_shifts_LC5.remove(self.added_shifts_LC5[-1])
+
+        self.update_num_shifts_label(machine)
+
+    def update_num_shifts_label(self, machine):
+
+
+        if machine == 'LF3015':
+            self.label_num_shifts_LF.text = f'Nº Turnos:   {str(len(self.added_shifts_LF))}'
+        else:
+            self.label_num_shifts_LC5.text = f'Nº Turnos:   {str(len(self.added_shifts_LC5))}'
+
+    def validate_data(self, *args):
+        total_added_shifts = self.added_shifts_LF + self.added_shifts_LC5
+        valid_time = True
+
+        for added_shift in total_added_shifts:
+            is_valid_1 = self.check_valid_time(added_shift.ti_time_start.text)
+            is_valid_2 = self.check_valid_time(added_shift.ti_time_finish.text)
+            is_valid_3 = self.check_valid_time(added_shift.ti_time_break.text)
+
+            if is_valid_1 == False or is_valid_2 == False or is_valid_3 == False:
+                valid_time = False
+                break
+
+            valid_minutes = self.check_valid_minutes(added_shift.ti_break_duration.text)
+
+            if valid_minutes == False:
+                break
+
+        if valid_time and valid_minutes:
+            remove_shifts()
+
+            for shift in self.added_shifts_LF:
+                insert_new_shift('LF3015', shift.ti_time_start.text, shift.ti_time_finish.text, shift.ti_time_break.text, shift.ti_break_duration.text)
+
+            for shift in self.added_shifts_LC5:
+                insert_new_shift('LC5', shift.ti_time_start.text, shift.ti_time_finish.text, shift.ti_time_break.text, shift.ti_break_duration.text)
+
+            production_planning.homepage.layout_sidebar.pop_shifts.dismiss()
+
+
+
+        else:
+            self.popup_warning_delete = PopupWarningMessage(message='Alguma coisa está mal preenchida', type='warning')
+            self.popup_warning_delete.open()
+
+    def check_valid_time(self, time_string):
+        num_list = time_string.split(':')
+
+        if len(num_list) != 2:
+            return False
+
+        for num in num_list:
+            try:
+                int(num)
+            except ValueError:
+                return False
+
+        if int(num_list[0]) < 0 or int(num_list[0]) > 24 or int(num_list[1]) < 0 or int(num_list[1]) > 60:
+            return False
+
+        return True
+
+    def check_valid_minutes(self, minutes):
+        try:
+            int(minutes)
+        except ValueError:
+            return False
+
+        if int(minutes) < 0 or int(minutes) > 60:
+            return False
+
+        return True
 
 
 class Production():
@@ -844,6 +1442,7 @@ class OrderPart(BoxLayout):
         self.set_color_buttons()
         self.set_ref_button_text()
 
+
     def set_selected(self, *args):
         self.is_selected = not self.is_selected
 
@@ -1008,6 +1607,15 @@ class OrderPart(BoxLayout):
             self.button_produced_quantity.background_color = color_light_green
             self.button_date_modified.background_color = color_light_green
             self.button_due_date.background_color = color_light_green
+
+        elif self.check_part_in_tasks():
+            self.button_ref.background_color = color_orange
+            self.button_name.background_color = color_orange
+            self.button_material_name.background_color = color_orange
+            self.button_quantity.background_color = color_orange
+            self.button_produced_quantity.background_color = color_orange
+            self.button_date_modified.background_color = color_orange
+            self.button_due_date.background_color = color_orange
         else:
             self.button_ref.background_color = color_dark_blue
             self.button_name.background_color = color_dark_blue
@@ -1021,6 +1629,15 @@ class OrderPart(BoxLayout):
         self.ti_new_value.focus = True
         self.ti_new_value.select_all()
 
+    def check_part_in_tasks(self):
+        is_part_in_tasks = False
+
+        for order_part_rowid in production_planning.homepage.layout_sidebar.layout_popup_order_parts.layout_sideframe.order_parts_in_tasks:
+            if self.rowid == order_part_rowid:
+                is_part_in_tasks = True
+
+        return is_part_in_tasks
+
 
 class OrderPartspage_Sideframe(BoxLayout):
     def __init__(self, **kwargs):
@@ -1033,6 +1650,7 @@ class OrderPartspage_Sideframe(BoxLayout):
         self.order_parts = [list(elem) for elem in load_order_parts_from_database()]
         self.added_order_parts = []
         self.select_all = False
+        self.order_parts_in_tasks = self.get_rowids_order_parts_in_tasks()
 
         self.layout_orders = BoxLayout(orientation='vertical', size_hint_y=0.35)
         self.layout_header = BoxLayout(orientation='horizontal', size_hint_y=0.08, padding=5)
@@ -1074,6 +1692,8 @@ class OrderPartspage_Sideframe(BoxLayout):
         self.add_widget(self.layout_order_parts)
 
         self.update_orders_display()
+        # print('ORDER PARTS IN TASKS')
+        # print(self.order_parts_in_tasks)
 
     def update_orders_display(self, *args):
         if len(self.added_orders) != 0:
@@ -1124,6 +1744,15 @@ class OrderPartspage_Sideframe(BoxLayout):
         for part in self.added_order_parts:
             part.is_selected = self.select_all
             part.checkbox_selected.state = state
+
+    def get_rowids_order_parts_in_tasks(self):
+        rowid_list = []
+
+        for db_task in load_tasks_from_database():
+            for order_rowid in db_task[10].split(','):
+                rowid_list.append(order_rowid)
+
+        return rowid_list
 
 
 class NewOrderPart(BoxLayout):
@@ -1353,7 +1982,7 @@ class OrderPartspage_Sidebar(BoxLayout):
         self.button_generate_tasks = Button(text='Gerar Tarefas\nItens Selecionados', font_size='14', halign='center', background_color=color_light_blue)
         self.button_generate_tag = Button(text='Gerar Etiquetas\nItens Selecionados', font_size='14', halign='center', background_color=color_light_blue)
         self.button_export_list_order_parts = Button(text='Exportar Listagem\nItens Selecionados', font_size='14', halign='center', background_color=color_light_blue)
-        self.button_email_selected_items = Button(text='Enviar Email\nItens Selecionados', font_size='14', halign='center', background_color=color_light_blue)
+        # self.button_email_selected_items = Button(text='Enviar Email\nItens Selecionados', font_size='14', halign='center', background_color=color_light_blue)
         self.label_empty = Label(text='', size_hint_y=1)
         self.label_num_current_orders = Label(text=f'{self.num_current_orders}\nEncomendas\nem\nCurso', halign='center')
 
@@ -1364,7 +1993,7 @@ class OrderPartspage_Sidebar(BoxLayout):
         self.button_generate_tasks.bind(on_press=self.generate_tasks_selected_parts)
         self.button_generate_tag.bind(on_press=self.generate_order_tags)
         self.button_export_list_order_parts.bind(on_press=self.export_list_order_parts)
-        self.button_email_selected_items.bind(on_press=self.display_popup_send_email)
+        # self.button_email_selected_items.bind(on_press=self.display_popup_send_email)
 
         self.add_widget(self.button_return)
         self.add_widget(self.button_new_order)
@@ -1373,7 +2002,7 @@ class OrderPartspage_Sidebar(BoxLayout):
         self.add_widget(self.button_generate_tasks)
         self.add_widget(self.button_generate_tag)
         self.add_widget(self.button_export_list_order_parts)
-        self.add_widget(self.button_email_selected_items)
+        # self.add_widget(self.button_email_selected_items)
         self.add_widget(self.label_empty)
         self.add_widget(self.label_num_current_orders)
 
@@ -1407,7 +2036,7 @@ class OrderPartspage_Sidebar(BoxLayout):
             date_modified = f'{datetime.datetime.now().day}/{datetime.datetime.now().month}/{datetime.datetime.now().year}'
             due_date = f'{datetime.datetime.now().day}/{datetime.datetime.now().month}/{datetime.datetime.now().year}'
 
-            print((ref, name, material_ref, quantity, produced_quantity, order_num, client, date_modified, due_date))
+            # print((ref, name, material_ref, quantity, produced_quantity, order_num, client, date_modified, due_date))
             insert_new_order_part_database(ref, name, material_ref, quantity, produced_quantity, order_num, order_num_client, client, date_modified, due_date, additional_operations=False)
             production_planning.homepage.layout_sidebar.layout_popup_order_parts.layout_sideframe.update_orders_display()
             production_planning.homepage.layout_sidebar.layout_popup_order_parts.layout_sideframe.update_order_parts_display(order_num)
@@ -1431,6 +2060,7 @@ class OrderPartspage_Sidebar(BoxLayout):
                 production_planning.homepage.layout_sidebar.layout_popup_order_parts.layout_sideframe.update_order_parts_display(order_part.order_num)
 
                 production_planning.homepage.layout_sidebar.layout_popup_order_parts.layout_sideframe.checkbox_select_all.state = 'normal'
+                production_planning.homepage.layout_sidebar.layout_popup_order_parts.layout_sideframe.select_all = False
 
         self.update_button_order_info()
         self.set_num_current_orders()
@@ -1656,39 +2286,39 @@ class OrderPartspage_Sidebar(BoxLayout):
 
         pdf.output(f'{filename}.pdf', 'F')
 
-    def display_popup_send_email(self, *args):
-        self.layout_popup_send_email = BoxLayout(orientation='vertical')
-        self.pop_send_email = Popup(title='Enviar email', content=self.layout_popup_send_email, size_hint=(0.60, 0.60))
-
-        layout_line_receivers = BoxLayout(orientation='horizontal', size_hint_y=0.2, padding=(5, 5))
-        layout_line_topic = BoxLayout(orientation='horizontal', size_hint_y=0.2, padding=(5, 5))
-        layout_line_message = BoxLayout(orientation='vertical', padding=(5, 5))
-        layout_line_buttons = BoxLayout(orientation='horizontal', size_hint_y=0.3, padding=(5, 5))
-
-        label_receivers = Label(text='Destinatários: ', size_hint_x=0.2)
-        ti_receivers = TextInput()
-        label_topic = Label(text='Assunto: ', size_hint_x=0.2)
-        ti_topic = TextInput()
-        ti_message = TextInput()
-        button_return = Button(text='<<<', font_size='16', halign='center', background_color=color_light_blue, padding=(10, 10))
-        button_send = Button(text='Enviar', font_size='16', halign='center', background_color=color_light_blue, padding=(10, 10))
-
-        button_return.bind(on_press=self.pop_send_email.dismiss)
-        button_send.bind(on_press=lambda x: self.send_email(ti_receivers.text, ti_topic.text, ti_message.text))
-
-        layout_line_receivers.add_widget(label_receivers)
-        layout_line_receivers.add_widget(ti_receivers)
-        layout_line_topic.add_widget(label_topic)
-        layout_line_topic.add_widget(ti_topic)
-        layout_line_message.add_widget(ti_message)
-        layout_line_buttons.add_widget(button_return)
-        layout_line_buttons.add_widget(button_send)
-        self.layout_popup_send_email.add_widget(layout_line_receivers)
-        self.layout_popup_send_email.add_widget(layout_line_topic)
-        self.layout_popup_send_email.add_widget(layout_line_message)
-        self.layout_popup_send_email.add_widget(layout_line_buttons)
-
-        self.pop_send_email.open()
+    # def display_popup_send_email(self, *args):
+    #     self.layout_popup_send_email = BoxLayout(orientation='vertical')
+    #     self.pop_send_email = Popup(title='Enviar email', content=self.layout_popup_send_email, size_hint=(0.60, 0.60))
+    #
+    #     layout_line_receivers = BoxLayout(orientation='horizontal', size_hint_y=0.2, padding=(5, 5))
+    #     layout_line_topic = BoxLayout(orientation='horizontal', size_hint_y=0.2, padding=(5, 5))
+    #     layout_line_message = BoxLayout(orientation='vertical', padding=(5, 5))
+    #     layout_line_buttons = BoxLayout(orientation='horizontal', size_hint_y=0.3, padding=(5, 5))
+    #
+    #     label_receivers = Label(text='Destinatários: ', size_hint_x=0.2)
+    #     ti_receivers = TextInput()
+    #     label_topic = Label(text='Assunto: ', size_hint_x=0.2)
+    #     ti_topic = TextInput()
+    #     ti_message = TextInput()
+    #     button_return = Button(text='<<<', font_size='16', halign='center', background_color=color_light_blue, padding=(10, 10))
+    #     button_send = Button(text='Enviar', font_size='16', halign='center', background_color=color_light_blue, padding=(10, 10))
+    #
+    #     button_return.bind(on_press=self.pop_send_email.dismiss)
+    #     button_send.bind(on_press=lambda x: self.send_email(ti_receivers.text, ti_topic.text, ti_message.text))
+    #
+    #     layout_line_receivers.add_widget(label_receivers)
+    #     layout_line_receivers.add_widget(ti_receivers)
+    #     layout_line_topic.add_widget(label_topic)
+    #     layout_line_topic.add_widget(ti_topic)
+    #     layout_line_message.add_widget(ti_message)
+    #     layout_line_buttons.add_widget(button_return)
+    #     layout_line_buttons.add_widget(button_send)
+    #     self.layout_popup_send_email.add_widget(layout_line_receivers)
+    #     self.layout_popup_send_email.add_widget(layout_line_topic)
+    #     self.layout_popup_send_email.add_widget(layout_line_message)
+    #     self.layout_popup_send_email.add_widget(layout_line_buttons)
+    #
+    #     self.pop_send_email.open()
 
     def send_email(self, receivers, topic, message, *args): # Falta adicionar funcionalidade ao email e averiguar como enviar para mais do que um destinatário
         print((receivers, topic, message))
@@ -2592,10 +3222,12 @@ class Materialspage_Sidebar(BoxLayout):
         self.button_return = Button(text='<<<', font_size='16', halign='center', background_color=color_light_blue)
         self.button_new_material = Button(text='Novo Material', font_size='14', halign='center', background_color=color_light_blue)
         self.button_delete_material = Button(text='Apagar Materiais\nSelecionados', font_size='14', halign='center', background_color=color_light_blue)
-        self.button_material_machine_dependencies = Button(text='Dependências\nMaterial/Máquina', font_size='14', halign='center', background_color=color_light_blue)
-        self.button_consume_history = Button(text='Histórico de\nConsumos', font_size='14', halign='center', background_color=color_light_blue)
-        self.button_order_recommendations = Button(text='Recomendações de\nEncomendas', font_size='14', halign='center', background_color=color_light_blue)
-        self.label_empty = Label(size_hint_y=2)
+        # self.button_material_machine_dependencies = Button(text='Dependências\nMaterial/Máquina', font_size='14', halign='center', background_color=color_light_blue)
+        # self.button_consume_history = Button(text='Histórico de\nConsumos', font_size='14', halign='center', background_color=color_light_blue)
+        # self.button_order_recommendations = Button(text='Recomendações de\nEncomendas', font_size='14', halign='center', background_color=color_light_blue)
+        self.label_empty1 = Label(size_hint_y=2)
+        self.label_empty2 = Label(size_hint_y=2)
+        self.label_empty3 = Label(size_hint_y=2)
 
         self.button_return.bind(on_press=self.close_popup_window)
         self.button_new_material.bind(on_press=self.display_popup_new_material)
@@ -2604,10 +3236,12 @@ class Materialspage_Sidebar(BoxLayout):
         self.add_widget(self.button_return)
         self.add_widget(self.button_new_material)
         self.add_widget(self.button_delete_material)
-        self.add_widget(self.button_material_machine_dependencies)
-        self.add_widget(self.button_consume_history)
-        self.add_widget(self.button_order_recommendations)
-        self.add_widget(self.label_empty)
+        # self.add_widget(self.button_material_machine_dependencies)
+        # self.add_widget(self.button_consume_history)
+        # self.add_widget(self.button_order_recommendations)
+        self.add_widget(self.label_empty1)
+        self.add_widget(self.label_empty2)
+        self.add_widget(self.label_empty3)
 
     def close_popup_window(self, *args):
         production_planning.homepage.layout_sidebar.pop_materials.dismiss()
@@ -2858,7 +3492,7 @@ class Taskpage_Filters_Bar(BoxLayout):
         # Priority Filter Block
         self.layout_filter_priority = BoxLayout(orientation='vertical', size_hint_x=0.05)
 
-        self.label_filter_priority = Label(text='Prioridade', font_size='15', halign='center', valign='center')
+        self.label_filter_priority = Label(text='Ordem', font_size='15', halign='center', valign='center') #Anteriormente era a prioridade
 
         self.filter_priority = Taskpage_Filter('Priority', group=1)
 
@@ -2965,7 +3599,7 @@ class Taskpage_Sideframe(BoxLayout):
                         self.aggregated_tasks_dict[key] = rowid_string
                         rowid_patterns_added_to_dict.append(rowid_string)
 
-        print(self.aggregated_tasks_dict)
+        # print(self.aggregated_tasks_dict)
 
     # def attribute_aggregated_tasks_keys(self, *args):
     #     for added_task in self.added_tasks:
@@ -3147,10 +3781,10 @@ class NewTaskpage(BoxLayout):
         def select_machine(self, new_val, *args):
             previous_val = self.button_machine.text
             setattr(self.button_machine, 'text', new_val)
-            if new_val == 'LC5' and previous_val == 'LF-3015':
-                self.ti_estimated_time.text = str(round(int(self.ti_estimated_time.text) / 2))
-            elif new_val == 'LF-3015' and previous_val == 'LC5':
-                self.ti_estimated_time.text = str(round(int(self.ti_estimated_time.text) * 2))
+            # if new_val == 'LC5' and previous_val == 'LF-3015':
+            #     self.ti_estimated_time.text = str(round(int(self.ti_estimated_time.text) / 2))
+            # elif new_val == 'LF-3015' and previous_val == 'LC5':
+            #     self.ti_estimated_time.text = str(round(int(self.ti_estimated_time.text) * 2))
 
         def select_all_task_order_parts(self, *args):
 
@@ -3185,8 +3819,6 @@ class NewTaskpage(BoxLayout):
                     selected_order_parts.append(order_part)
 
             return selected_order_parts
-
-
 
         def submit_new_task(self, *args):
 
@@ -3227,15 +3859,19 @@ class Taskspage_Sidebar(BoxLayout):
         self.orientation = 'vertical'
         self.size_hint_x = 0.08
 
+        self.total_time_LF = 0
+        self.total_time_LC5 = 0
+
         self.button_return = Button(text='<<<', font_size='16', halign='center', background_color=color_light_blue)
         self.button_create_new_task = Button(text='Nova\nTarefa', halign='center', font_size='14', background_color=color_light_blue)
         self.button_join_tasks = Button(text='Agrupar\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
         self.button_split_tasks = Button(text='Desagrupar\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
         self.button_delete_tasks = Button(text='Apagar\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
         self.button_produce_tasks = Button(text='Produzir\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
-        self.button_build_daily_tasks_sheet = Button(text='Gerar\nOrdem Trabalhos\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
-        self.button_history_daily_tasks_sheet = Button(text='Consultar\nHistórico\nOrdens Trabalhos', halign='center', font_size='14', background_color=color_light_blue)
-        self.label_empty = Label()
+        self.button_plan_tasks = Button(text='Planear\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
+
+        self.label_machine_time_LF = Label(text=f'Tempo Total LF:\n {self.total_time_LF} H')
+        self.label_machine_time_LC5 = Label(text=f'Tempo Total LC5:\n {self.total_time_LC5} H')
 
         self.button_return.bind(on_press=self.close_popup_window)
         self.button_create_new_task.bind(on_press=self.display_popup_new_task)
@@ -3243,7 +3879,7 @@ class Taskspage_Sidebar(BoxLayout):
         self.button_split_tasks.bind(on_press=self.split_selected_tasks)
         self.button_delete_tasks.bind(on_press=self.delete_selected_tasks)
         self.button_produce_tasks.bind(on_press=self.produce_selected_tasks)
-        self.button_build_daily_tasks_sheet.bind(on_press=self.build_daily_tasks_sheet)
+        self.button_plan_tasks.bind(on_press=self.display_popup_plan_tasks)
 
         self.add_widget(self.button_return)
         self.add_widget(self.button_create_new_task)
@@ -3251,9 +3887,11 @@ class Taskspage_Sidebar(BoxLayout):
         self.add_widget(self.button_split_tasks)
         self.add_widget(self.button_delete_tasks)
         self.add_widget(self.button_produce_tasks)
-        self.add_widget(self.button_build_daily_tasks_sheet)
-        self.add_widget(self.button_history_daily_tasks_sheet)
-        self.add_widget(self.label_empty)
+        self.add_widget(self.button_plan_tasks)
+        self.add_widget(self.label_machine_time_LF)
+        self.add_widget(self.label_machine_time_LC5)
+
+        self.set_total_time_machines()
 
     def close_popup_window(self, *args):
         production_planning.homepage.layout_sidebar.pop_tasks.dismiss()
@@ -3307,7 +3945,6 @@ class Taskspage_Sidebar(BoxLayout):
         end_dates = list(set(end_dates))
         priorities = list(set(priorities))
         rowid_string = ','.join(str(selected_task) for selected_task in sorted(selected_tasks))
-        print(f'ROWID STRING == {rowid_string}')
 
         layout_join_selected_tasks = BoxLayout(orientation='vertical')
         line_1 = BoxLayout(orientation='horizontal', size_hint_y=0.1, padding=(5, 5))
@@ -3508,11 +4145,217 @@ class Taskspage_Sidebar(BoxLayout):
                 remove_task_database(task.rowid)
                 # TODO After developing productions interface, insert a new production here
 
-    def build_daily_tasks_sheet(self, *args):
-        # selected_tasks = [added_task for added_task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks if added_task.is_selected]
-        daily_tasks_sheet = DailyTasksSheet('LC5', '12/30/2019', '', '', production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks)
+    def display_popup_plan_tasks(self, *args):
+        self.layout_plan_tasks = Planning()
+        self.pop_plan_tasks = Popup(title='Planear Tarefas', content=self.layout_plan_tasks, size_hint=(0.8, 0.85))
+        self.pop_plan_tasks.open()
 
-        daily_tasks_sheet.build_sheet()
+    def plan_selected_tasks(self, starting_time_LF, starting_time_LC5, starting_date_LF, starting_date_LC5, *args):
+        selected_tasks_LF = []
+        selected_tasks_LC5 = []
+
+        for task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
+            if task.is_selected:
+                if task.machine == 'LF-3015':
+                    selected_tasks_LF.append(task)
+                else:
+                    selected_tasks_LC5.append(task)
+
+        selected_tasks_LF.sort(key=lambda x: x.priority, reverse=False)
+        selected_tasks_LC5.sort(key=lambda x: x.priority, reverse=False)
+
+        shift_times_list_LF = sorted(self.get_avaliable_shift_times('LF3015', starting_date_LF, starting_date_LC5))
+        shift_times_list_LC5 = sorted(self.get_avaliable_shift_times('LC5', starting_date_LF, starting_date_LC5))
+
+        self.build_excel_plan(selected_tasks_LF, selected_tasks_LC5, starting_time_LF, starting_time_LC5, starting_date_LF,  starting_date_LC5, shift_times_list_LF, shift_times_list_LC5)
+
+    def get_avaliable_shift_times(self, machine, starting_date_LF, starting_date_LC5):
+        if machine == 'LF3015':
+            starting_year = int(starting_date_LF.split('/')[2])
+            starting_month = int(starting_date_LF.split('/')[1])
+            starting_day = int(starting_date_LF.split('/')[0])
+        else:
+            starting_year = int(starting_date_LC5.split('/')[2])
+            starting_month = int(starting_date_LC5.split('/')[1])
+            starting_day = int(starting_date_LC5.split('/')[0])
+
+        shift_list = load_shifts(machine)
+        total_break_times = []
+        total_shift_times = []
+
+        step_interval = datetime.timedelta(minutes=15)
+
+        for shift in shift_list:
+            break_start_time_obj = datetime.datetime(year=starting_year, month=starting_month, day=starting_day, hour=int(shift[3].split(':')[0]), minute=int(shift[3].split(':')[1]))
+            break_duration_obj = datetime.timedelta(minutes=int(shift[4]))
+            break_finish_time_obj = break_start_time_obj + break_duration_obj
+
+            break_times = return_times_between_times(break_start_time_obj, break_finish_time_obj, step_interval)
+            break_times.remove(break_times[0])
+            break_times.remove(break_times[-1])
+            total_break_times += break_times
+
+            shift_start_time_obj = datetime.datetime(year=starting_year, month=starting_month, day=starting_day, hour=int(shift[1].split(':')[0]), minute=int(shift[1].split(':')[1]))
+            shift_finish_time_obj = datetime.datetime(year=starting_year, month=starting_month, day=starting_day, hour=int(shift[2].split(':')[0]), minute=int(shift[2].split(':')[1]))
+
+            shift_times = return_times_between_times(shift_start_time_obj, shift_finish_time_obj, step_interval)
+            total_shift_times += shift_times
+
+        total_shift_times = set(total_shift_times) - set(total_break_times)
+
+        return list(total_shift_times)
+
+    def build_excel_plan(self, selected_tasks_LF, selected_tasks_LC5, starting_time_LF, starting_time_LC5, starting_date_LF, starting_date_LC5, shift_times_LF, shift_times_LC5):
+
+        outWorkbook = xls.Workbook('Planeamento.xlsx')
+
+        gen_format_1 = outWorkbook.add_format({
+            'bold': 0,
+            'border': 2,
+            'align': 'center',
+            'valign': 'vcenter',
+            'fg_color': 'FFFC99',
+            'font_size': 12
+        })
+
+        gen_format_2 = outWorkbook.add_format({
+            'bold': 0,
+            'border': 2,
+            'align': 'center',
+            'valign': 'vcenter',
+            'fg_color': 'FFD899',
+            'font_size': 12
+        })
+
+        gen_format_3 = outWorkbook.add_format({
+            'bold': 0,
+            'border': 2,
+            'align': 'center',
+            'valign': 'vcenter',
+            'fg_color': 'DBFF99',
+            'font_size': 12
+        })
+
+        header_format = outWorkbook.add_format({
+            'bold': 1,
+            'border': 2,
+            'align': 'center',
+            'valign': 'vcenter',
+            'fg_color': 'silver',
+            'font_size': 13
+        })
+
+        color_iterator = cycle([gen_format_1, gen_format_2, gen_format_3])
+
+        total_cells_LF = 0
+        for task_LF in selected_tasks_LF:
+            num_cells = math.ceil((task_LF.time) / 15)
+            total_cells_LF += num_cells
+
+        total_cells_LC5 = 0
+        for task_LC5 in selected_tasks_LC5:
+            num_cells = math.ceil((task_LC5.time) / 15)
+            total_cells_LC5 += num_cells
+
+
+        # shift_times_LC5 = self.update_times(total_cells_LC5, starting_time_LC5, shift_times_LC5)
+
+
+        outSheetPlanning = outWorkbook.add_worksheet('Planeamento')
+        outSheetList = outWorkbook.add_worksheet('Listagem')
+
+
+        # LF PLANNING
+        outSheetPlanning.write(1, 1, 'LF-3015', header_format)
+
+        starting_time_LF = round_time(starting_time_LF)
+        start_date_LF = datetime.datetime(year=int(starting_date_LF.split('/')[2]), month=int(starting_date_LF.split('/')[1]), day=int(starting_date_LF.split('/')[0]), hour=int(starting_time_LF.split(':')[0]), minute=int(starting_time_LF.split(':')[1]))
+
+        shift_times_LF = self.update_times(total_cells_LF, start_date_LF, shift_times_LF)
+        iter_shift_times_LF = cycle(shift_times_LF)
+
+
+
+        # row_LF = 3
+        # col_LF = 1
+        # counter = 1
+        # day_multiplier = 0
+        # col_start_day = col_LF
+        #
+        # for task_LF in selected_tasks_LF:
+        #     name_task = 'T' + str(counter)
+        #     minutes_task = int(task_LF.time)
+        #     num_cells = math.ceil(minutes_task / 15)  # 15 Because each cell equals 15 mins
+        #
+        #     # print('MINUTES = ' + str(minutes_task))
+        #     # print('NUM CELLS = ' + str(num_cells))
+        #
+        #     starting_col_LF = col_LF
+        #     for _ in range(num_cells):
+        #         current_time = next(iter_shift_times_LF) + datetime.timedelta(days=day_multiplier)
+        #
+        #         if is_last_index_list(current_time, shift_times_LF):
+        #             current_date_string = f'{current_time.day}/{current_time.month}/{current_time.year}'
+        #             outSheetPlanning.merge_range(row_LF-1, starting_col_LF, row_LF-1, col_LF, current_date_string, header_format)
+        #             day_multiplier += 1
+        #
+        #
+        #         current_time_string = f'{current_time.hour}:{current_time.minute}'
+        #
+        #         outSheetPlanning.write(row_LF, col_LF, current_time_string, header_format)
+        #
+        #         col_LF += 1
+        #
+        #     if starting_col_LF == col_LF-1:
+        #         outSheetPlanning.write(row_LF + 1, starting_col_LF, name_task, next(color_iterator))
+        #     else:
+        #         outSheetPlanning.merge_range(row_LF+1, starting_col_LF, row_LF+1, col_LF-1, name_task, next(color_iterator))
+        #
+        #     counter += 1
+        #
+        # row_LC5 = 6
+        # col_LC5 = 1
+
+
+
+        outWorkbook.close()
+
+    def update_times(self, num_total_cells, start_date, shift_times):
+        # TODO SOLVE PROBLEM WHEN START TIME IS NOT IN LIST. IT SHOULD RETURN NEXT POSSIBLE TIME
+        new_shift_times = []
+        iterator_shift_times = cycle(shift_times)
+        day_multiplier = 0
+
+        index_time_start = shift_times.index(start_date)
+
+        for _ in range(index_time_start):
+            next(iterator_shift_times)
+
+        for _ in range(num_total_cells):
+            current_date = next(iterator_shift_times)
+
+            current_date = current_date + datetime.timedelta(days=day_multiplier)
+            new_shift_times.append(current_date)
+
+            if current_date.hour == shift_times[-1].hour and current_date.minute == shift_times[-1].minute:
+                day_multiplier += 1
+
+        return new_shift_times
+
+
+
+    def set_total_time_machines(self, *args):
+        current_tasks = [task for task in load_tasks_from_database()]
+        time_dict = {'LF-3015': 0, 'LC5': 0}
+
+        for curr_task in current_tasks:
+            time_dict[curr_task[2]] += curr_task[6]
+
+        self.total_time_LF = time_dict['LF-3015']
+        self.total_time_LC5 = time_dict['LC5']
+
+        self.label_machine_time_LF.text = str(f'Tempo Total LF:\n {return_formatted_time_string(self.total_time_LF)}')
+        self.label_machine_time_LC5.text = str(f'Tempo Total LC5:\n {return_formatted_time_string(self.total_time_LC5)}')
 
 
 class Taskspage(BoxLayout):
@@ -3869,6 +4712,8 @@ class Task(BoxLayout):
                     if aggregated_task_rowid == added_task.rowid:
                         added_task.set_total_time()
                         added_task.set_text_button_time()
+
+            production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.set_total_time_machines()
         elif field == 'start_date':
             for added_task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
                 for aggregated_task_rowid in self.aggregated_tasks:
@@ -3925,8 +4770,10 @@ class Task(BoxLayout):
         elif field == 'notes':
             if self.notes == '':
                 self.button_notes.background_color = self.idle_color
-            else:
+            elif self.notes.lower().replace(' ', '') == 'folha':
                 self.button_notes.background_color = color_light_green
+            else:
+                self.button_notes.background_color = color_orange
 
     def set_idle_color_buttons(self, *args):
         if len(self.aggregated_tasks) > 1:
@@ -3996,14 +4843,14 @@ class Task(BoxLayout):
 
     def set_aggregated_index(self, *args):
         for key in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.aggregated_tasks_dict:
-            print(f'ROWID STRING IN DICT = {production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.aggregated_tasks_dict[key]}')
-            print(f'TASK ROWID STRING {self.aggregated_tasks_string}')
+            # print(f'ROWID STRING IN DICT = {production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.aggregated_tasks_dict[key]}')
+            # print(f'TASK ROWID STRING {self.aggregated_tasks_string}')
             if production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.aggregated_tasks_dict[key] == self.aggregated_tasks_string:
                 self.aggregated_index = key
                 self.button_current_path.text = f'Caminho\nAtual [{key}]'
                 self.button_original_path.text = f'Caminho\nOriginal [{key}]'
 
-                print(f'THE SELECT KEY WAS {key}')
+                # print(f'THE SELECT KEY WAS {key}')
 
                 change_value_task_database(key, 'aggregated_index', self.rowid)
 
@@ -4052,34 +4899,34 @@ class Homepage_Sidebar(BoxLayout):
         # Creating the buttons
         self.button_tasks = Button(text='Tarefas', font_size='16', background_color=color_light_blue)
         self.button_orders = Button(text='Encomendas', font_size='16', background_color=color_light_blue)
-        self.button_planning = Button(text='Planeamento', font_size='16', background_color=color_light_blue)
-        self.button_productions = Button(text='Produções', font_size='16', background_color=color_light_blue)
         self.button_parts = Button(text='Artigos', font_size='16', background_color=color_light_blue)
-        self.button_clients = Button(text='Clientes', font_size='16', background_color=color_light_blue)
         self.button_materials = Button(text='Materiais', font_size='16', background_color=color_light_blue)
-        self.button_consumables = Button(text='Consumíveis', font_size='16', background_color=color_light_blue)
-        self.button_machines = Button(text='Máquinas', font_size='16', background_color=color_light_blue)
-        self.button_statistics = Button(text='Estatísticas', font_size='16', background_color=color_light_blue)
-        self.button_settings = Button(text='Definições', font_size='16', background_color=color_light_blue)
+        self.button_shifts = Button(text='Definir\nTurnos', font_size='16', background_color=color_light_blue)
+        self.label1 = Label()
+        self.label2 = Label()
+        self.label3 = Label()
+        self.label4 = Label()
 
         # Binding the functions to the buttons
         self.button_tasks.bind(on_press=self.display_popup_tasks)
         self.button_orders.bind(on_press=self.display_popup_order_parts)
         self.button_parts.bind(on_press=self.display_popup_parts)
-        self.button_clients.bind(on_press=self.display_popup_clients)
         self.button_materials.bind(on_press=self.display_popup_materials)
+        self.button_shifts.bind(on_press=self.display_popup_shifts)
 
         self.add_widget(self.button_tasks)
         self.add_widget(self.button_orders)
-        self.add_widget(self.button_planning)
-        self.add_widget(self.button_productions)
         self.add_widget(self.button_parts)
-        self.add_widget(self.button_clients)
         self.add_widget(self.button_materials)
-        self.add_widget(self.button_consumables)
-        self.add_widget(self.button_machines)
-        self.add_widget(self.button_statistics)
-        self.add_widget(self.button_settings)
+        self.add_widget(self.button_shifts)
+        self.add_widget(self.label1)
+        self.add_widget(self.label2)
+        self.add_widget(self.label3)
+        self.add_widget(self.label4)
+        # self.add_widget(self.button_consumables)
+        # self.add_widget(self.button_machines)
+        # self.add_widget(self.button_statistics)
+        # self.add_widget(self.button_settings)
 
     def display_popup_tasks(self, *args):
         self.layout_popup_tasks = Taskspage()
@@ -4110,6 +4957,12 @@ class Homepage_Sidebar(BoxLayout):
         self.pop_materials = Popup(title='Materiais', content=self.layout_popup_materials, size_hint=(0.95, 0.95), auto_dismiss=False)
 
         self.pop_materials.open()
+
+    def display_popup_shifts(self, *args):
+        self.layout_popup_shifts = Shiftspage()
+        self.pop_shifts = Popup(title='Definir Turnos', content=self.layout_popup_shifts, size_hint=(0.95, 0.85), auto_dismiss=False)
+
+        self.pop_shifts.open()
 
 
 class Homepage(BoxLayout):
@@ -4292,7 +5145,7 @@ class DailyTasksSheet:
 
             tasks.append(temp_task)
 
-            print([(task.rowid, task.order_parts_rowids) for task in tasks])
+            # print([(task.rowid, task.order_parts_rowids) for task in tasks])
 
             return tasks
 
@@ -4395,6 +5248,18 @@ class PopupWarningMessage(Popup):
 
 
 if __name__ == '__main__':
+    #TODO Add keyboard functionality to menus (ENTER to validate and TAB to jump to next widget)
+    #TODO Add autofocus and select all to some textinputs
+    #TODO Add loading menus to heavy duty task and calculations
+    #TODO Develop Planning Interface
+    #TODO Develop Productions Interface
+    #TODO Develop Clients Interface
+    #TODO Develop Machines Interface
+    #TODO Develop Consumables
+    #TODO Develop Statistics
+    #TODO Reduce sizes of buttons, especially on the sidebars
+    #TODO Add Tubes as materials
+
     color_dark_gray = convert_rgb_to_kivy_float((128, 128, 128))
     color_light_gray = convert_rgb_to_kivy_float((224, 224, 224))
     color_dark_blue = convert_rgb_to_kivy_float((0, 102, 204))

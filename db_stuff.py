@@ -9,6 +9,7 @@ import sqlite3
 #
 #     return wrap
 
+
 def load_order_parts_from_database(mode='all', material_ref=None, rowid=None, *args):
     if mode == 'all':
         cursor.execute('''select *, rowid from order_parts order by client, order_num_client, name''')
@@ -23,9 +24,11 @@ def load_order_parts_from_database(mode='all', material_ref=None, rowid=None, *a
         cursor.execute('select produced_quantity from order_parts where rowid = :rowid', {'rowid': rowid})
         return cursor.fetchone()
 
+
 def remove_order_part_database(rowid):
     with conn:
         cursor.execute('''delete from order_parts where rowid = :rowid''', {'rowid': rowid})
+
 
 def load_tasks_from_database(rowid=None):
     if rowid == None:
@@ -160,20 +163,69 @@ def get_materials(*args):
     return cursor.fetchall()
 
 
+def create_shifts_table(*args):
+    cursor.execute('''create table if not exists shifts(
+                    machine text,
+                    time_start text,
+                    time_finish text,
+                    time_break text,
+                    break_duration int
+                      )''')
+
+
+def insert_new_shift(machine, time_start, time_finish, time_break, break_duration):
+    cursor.execute('''insert into shifts values(:machine, :time_start, :time_finish, :time_break, :break_duration)''',
+                   {'machine': machine,
+                    'time_start': time_start,
+                    'time_finish': time_finish,
+                    'time_break': time_break,
+                    'break_duration': break_duration})
+
+
+def load_shifts(machine=None):
+    if machine == None:
+        query = '''select * from shifts'''
+    else:
+        query = '''select * from shifts where machine = :machine''', {'machine': machine}
+
+    cursor.execute(query)
+
+    return cursor.fetchall()
+
+
+def change_value_shifts_database(value, field, rowid):
+    with conn:
+        if field == 'time_start':
+            cursor.execute('update shifts set time_start = :time_start where rowid = :rowid', {'time_start': value, 'rowid': rowid})
+        elif field == 'time_finish':
+            cursor.execute('update shifts set time_finish = :time_finish where rowid = :rowid', {'time_finish': value, 'rowid': rowid})
+        elif field == 'time_break':
+            cursor.execute('update shifts set time_break = :time_break where rowid = :rowid', {'time_break': value, 'rowid': rowid})
+        elif field == 'break_duration':
+            cursor.execute('update shifts set break_duration = :break_duration where rowid = :rowid', {'break_duration': value, 'rowid': rowid})
+
+
+def remove_shifts(rowid):
+    with conn:
+        cursor.execute('delete from tasks where rowid = :rowid', {'rowid': rowid})
+
+
+
+
 if __name__ == '__main__':
     conn = sqlite3.connect('Database.db', isolation_level=None)
     cursor = conn.cursor()
 
-    # # remove_task_database(18)
-    #
-    # task_list = load_tasks_from_database()
-    # for task in task_list:
-    #     print(task)
+    create_shifts_table()
 
-    order_list = load_order_parts_from_database()
-    for order in order_list:
-        if order[7] == 'RST - CONSTRUTORA DE MAQUINAS E ACESSORIOS, SA':
-            remove_order_part_database(order[11])
-        print(order)
+    # insert_new_shift('LC5', '6:00', '14:00', '10:00', 30)
+    # insert_new_shift('LC5', '14:00', '22:00', '18:00', 30)
+    # insert_new_shift('LF3015', '6:00', '14:00', '10:00', 30)
+    # insert_new_shift('LF3015', '14:00', '22:00', '18:00', 30)
+
+    # shifts = load_shifts()
+    #
+    # for shift in shifts:
+    #     print(shift)
 
     conn.close()
