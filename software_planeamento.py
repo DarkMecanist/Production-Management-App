@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 from fpdf import FPDF
 from itertools import combinations, cycle
 import xlsxwriter as xls
+import operator
 
 kivy.require('1.11.0')
 from kivy.config import Config
@@ -35,64 +36,74 @@ from kivy.core.window import Window
 from kivy.app import App
 
 
-def is_last_index_list(item, any_list):
-    last_index = len(any_list) - 1
-
-    if item == any_list[last_index]:
-        return True
-
-    return False
+def return_formatted_datetime(datetime_obj):
+    return f'{datetime_obj.hour}:{datetime_obj.minute} - {datetime_obj.day}/{datetime_obj.month}/{datetime_obj.year}'
 
 
-def round_time(time_string):
+def round_time(time_obj):
     """Rounds time to 15 minute intervals. Ex 9:11 → 9:15"""
 
-    hour = time_string.split(':')[0]
-    minutes = int(time_string.split(':')[1])
-    if minutes > 0 and minutes < 15:
-        new_minutes = '15'
-        time_string = hour + ':' + new_minutes
-    elif minutes > 15 and minutes < 30:
-        new_minutes = '30'
-        time_string = hour + ':' + new_minutes
-    elif minutes > 30 and minutes < 45:
-        new_minutes = '45'
-        time_string = hour + ':' + new_minutes
-    elif minutes > 45:
-        new_minutes = '00'
-        if hour == '23':
-            new_hour = '00'
+    if time_obj.minute > 0 and time_obj.minute < 15:
+        new_minutes = 15
+        time_obj = datetime.datetime(year=time_obj.year, month=time_obj.month, day=time_obj.day, hour=time_obj.hour, minute=new_minutes)
+    elif time_obj.minute > 15 and time_obj.minute < 30:
+        new_minutes = 30
+        time_obj = datetime.datetime(year=time_obj.year, month=time_obj.month, day=time_obj.day, hour=time_obj.hour, minute=new_minutes)
+    elif time_obj.minute > 30 and time_obj.minute < 45:
+        new_minutes = 45
+        time_obj = datetime.datetime(year=time_obj.year, month=time_obj.month, day=time_obj.day, hour=time_obj.hour, minute=new_minutes)
+    elif time_obj.minute > 45:
+        new_minutes = 0
+        if time_obj.hour == 23:
+            new_hour = 0
         else:
-            new_hour = str(int(hour)+1)
+            new_hour = time_obj.hour + 1
 
-        time_string = new_hour + ':' + new_minutes
+            time_obj = datetime.datetime(year=time_obj.year, month=time_obj.month, day=time_obj.day, hour=new_hour, minute=new_minutes)
 
-    return time_string
+    return time_obj
 
 
 def return_times_between_times(time_start, time_finish, interval_step):
+    """Returns all the times, ignoring weekend days, equally spaced, includes start time but excludes finish time"""
     times_list = []
+    # print(f'LATEST DATE IS {latest_date}')
 
-    duration = time_finish - time_start
-    num_times = round((duration / interval_step) + 1)
+    # if time_start.day != latest_date.day or time_start.month != latest_date.month or time_start.year != latest_date.year:
+    #     time_start = datetime.datetime(year=latest_date.year, month=latest_date.month, day=latest_date.day, hour=time_start.hour, minute=time_start.minute)
+    #
+    # if time_finish.day != latest_date.day or time_finish.month != latest_date.month or time_finish.year != latest_date.year:
+    #     time_finish = datetime.datetime(year=latest_date.year, month=latest_date.month, day=latest_date.day, hour=time_finish.hour, minute=time_finish.minute)
 
+    duration = return_duration_between_dates(time_start, time_finish)
+    num_times = round((duration / interval_step))
+
+    # print(f'RETURNING TIMES BETWEEN {str(time_start)} and {str(time_finish)}')
     for _ in range(num_times):
         times_list.append(time_start)
-        time_start += interval_step
+        time_start = return_next_weekday(time_start + interval_step)
 
+    # print(times_list)
+    # print('___________________________________________________')
     return times_list
 
 
-def is_weekday(day):
+def return_duration_between_dates(date_start, date_finish):
+    duration = date_finish - date_start
+
+    if duration.days == 2:
+        return duration - datetime.timedelta(days=2)
+
+    return duration
+
+
+def return_next_weekday(datetime_obj):
     '''checks if an day object is a week day. If it isn't, it outputs the next week day'''
-    weekday = datetime.datetime.weekday(day)
-    if weekday < 5:
-        return True
-    else:
-        return False
 
+    while datetime_obj.weekday() > 4:
+        datetime_obj += datetime.timedelta(days=1)
 
-
+    return datetime_obj
 
 
 def check_date_is_valid(date_string):
@@ -182,20 +193,6 @@ def wrapper_function(list, type):
             #     new_list.append(new_item)
     return new_list
 
-# OLD GET SEARCH PATTERN (OBSOLETE)
-# def get_search_pattern(type):
-#     if type == 'Client':
-#         return r'Exmo\.\(s\) Sr.\(s\)\n(.+)\n', 1
-#     elif type == 'Order':
-#         return r'\b(.+)\nNº Requisição', 1
-#     elif type == 'Part Ref':
-#         return r'(([0-9].*){8}|([0-9].*){12}|1)\n[A-Za-z0-9].+(\n.+)?\n \d+(\.|,)(\d{0,3}(\.|,))?\d{3}\n', 1 #Part Ref #r'(\b[A-Z0-9]{12}\n|\b1\n)'
-#     elif type == 'Part Name':
-#         return r'\b([A-Za-z].+(\n.+)?)\n \d+(\.|,)(\d{0,3}(\.|,))?\d{3}\n', 1 #Part Name
-#     elif type == 'Part Qtty':
-#         return r' \d+(\.|,)(\d{0,3}(\.|,))?\d{3}\n', 0 #Part qtty
-#     elif type == 'Part Unit':
-#         return r'( \d+(\.|,)(\d{0,3}(\.|,))?\d{3}\n)(UN|KG|MT|un|kg|mt|Un|Kg|Mt)\n', 5 #Part unit
 
 def get_search_pattern(type):
     if type == 'Client':
@@ -240,19 +237,6 @@ def identify_PDF_type(filepath):
         return type
     else:
         print('File Matches no known type')
-
-
-def get_filepaths_from_dir(directory):
-    '''Returns a list of all the filepaths in a given directory'''
-    directories = list(os.walk(directory))
-    filepaths_list = []
-
-    gen_path = directories[0][0]
-    for subpath in directories[0][2]:
-        if subpath.split('.')[-1] == 'pdf':
-            filepaths_list.append(gen_path + subpath)
-
-    return filepaths_list
 
 
 def return_order_parts_from_PDF():
@@ -877,8 +861,13 @@ class Planning(BoxLayout):
                 break
 
         if valid_time and valid_minutes and valid_date_LF and valid_date_LC5:
-            production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.plan_selected_tasks(self.ti_time_start_plan_LF.text, self.ti_time_start_plan_LC5.text, self.ti_date_start_plan_LF.text, self.ti_date_start_plan_LC5.text)
-            production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.pop_plan_tasks.dismiss()
+            try:
+                production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.plan_selected_tasks(self.ti_time_start_plan_LF.text, self.ti_time_start_plan_LC5.text, self.ti_date_start_plan_LF.text, self.ti_date_start_plan_LC5.text)
+                production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.pop_plan_tasks.dismiss()
+            except PermissionError:
+                popup_warning_file_open = PopupWarningMessage(message='Alguém tem o Excel aberto, pede para fecharem', type='warning')
+                popup_warning_file_open.open()
+
 
         else:
             self.popup_warning_delete = PopupWarningMessage(message='Alguma coisa está mal preenchida', type='warning')
@@ -1441,7 +1430,6 @@ class OrderPart(BoxLayout):
         self.set_initial_state_additional_operations_checkbox()
         self.set_color_buttons()
         self.set_ref_button_text()
-
 
     def set_selected(self, *args):
         self.is_selected = not self.is_selected
@@ -3608,7 +3596,7 @@ class Taskpage_Sideframe(BoxLayout):
 
 
 class NewTaskPart(BoxLayout):
-    def __init__(self, name, quantity, produced_quantity, client, order_num, order_num_client, additional_operations, rowid, **kwargs):
+    def __init__(self, name, quantity, produced_quantity, client, order_num, order_num_client, additional_operations, rowid, due_date='N/A', **kwargs):
         super().__init__(**kwargs)
 
         self.orientation = 'horizontal'
@@ -3630,6 +3618,7 @@ class NewTaskPart(BoxLayout):
             self.additional_operations = 'Não'
         self.is_selected = False
         self.rowid = rowid
+        self.due_date = due_date
 
         self.checkbox_selected = CheckBox(size_hint_x=0.05)
         self.button_name = Button(text=self.name[:66], font_size='16', background_color=color_dark_blue, size_hint_x=0.4)
@@ -3764,8 +3753,7 @@ class NewTaskpage(BoxLayout):
                 if new_order_part[2] == material_ref:
                     order_part_already_added = self.check_order_part_in_any_task(new_order_part[-1])
                     if not order_part_already_added:
-                        # print(new_order_part[1], new_order_part[3], new_order_part[4], new_order_part[7], new_order_part[5], new_order_part[6], new_order_part[10], new_order_part[-1])
-                        ntp = NewTaskPart(new_order_part[1], new_order_part[3], new_order_part[4], new_order_part[7], new_order_part[5], new_order_part[6], new_order_part[10], new_order_part[-1])
+                        ntp = NewTaskPart(new_order_part[1], new_order_part[3], new_order_part[4], new_order_part[7], new_order_part[5], new_order_part[6], new_order_part[10], new_order_part[-1], due_date=new_order_part[9])
                         if int(ntp.pending_quantity) != 0 and int(ntp.pending_quantity) > 0:
                             self.layout_scroll_new_task.add_widget(ntp)
                             self.added_new_order_parts.append(ntp)
@@ -3824,31 +3812,47 @@ class NewTaskpage(BoxLayout):
 
             selected_order_parts = self.return_selected_order_parts()
 
-            if len(selected_order_parts) != 0:
-                original_path = self.ti_path.text
-                current_path = original_path
-                machine = self.button_machine.text
-                material_type = self.button_material.text.split(' ')[0]
-                material_spec = self.button_material.text.split(' ')[1].split(',')[0]
-                material_thickness = float(self.button_material.text.split(' ')[2].split('mm')[0])
-                material_client = self.button_material.text.split(' ')[3]
-                material_ref = get_material_ref(material_type, material_spec, material_thickness, material_client)
-                notes = ''
-                estimated_sheets_required = float(self.ti_estimated_sheets_required.text)
-                estimated_time = int(self.ti_estimated_time.text)
-                start_date = 'N/A'
-                end_date = 'N/A'
-                priority = 0
-                order_parts = self.generate_task_order_parts_rowid_string()
-                aggregated_tasks = ''
+            try:
+                if len(selected_order_parts) != 0:
+                    original_path = self.ti_path.text
+                    current_path = original_path
+                    machine = self.button_machine.text
+                    material_type = self.button_material.text.split(' ')[0]
+                    material_spec = self.button_material.text.split(' ')[1].split(',')[0]
+                    material_thickness = float(self.button_material.text.split(' ')[2].split('mm')[0])
+                    material_client = self.button_material.text.split(' ')[3]
+                    material_ref = get_material_ref(material_type, material_spec, material_thickness, material_client)
+                    notes = ''
+                    estimated_sheets_required = float(self.ti_estimated_sheets_required.text)
+                    estimated_time = int(self.ti_estimated_time.text)
+                    start_date = 'N/A'
+                    end_date = self.return_earliest_date_order_parts(selected_order_parts)
+                    priority = 0
+                    order_parts = self.generate_task_order_parts_rowid_string()
+                    aggregated_tasks = ''
 
-                # print((current_path, original_path, machine, material_ref, notes, estimated_sheets_required, estimated_time, start_date, end_date, priority, order_parts))
-                insert_new_task_database(current_path, original_path, machine, material_ref, notes, estimated_sheets_required, estimated_time, start_date, end_date, priority, order_parts, aggregated_tasks)
-                production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.update_display()
-                production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.pop_new_task.dismiss()
-            else:
-                popup_warning = PopupWarningMessage('Nenhuma Tarefa Selecionada')
+                    # print((current_path, original_path, machine, material_ref, notes, estimated_sheets_required, estimated_time, start_date, end_date, priority, order_parts))
+                    insert_new_task_database(current_path, original_path, machine, material_ref, notes, estimated_sheets_required, estimated_time, start_date,
+                                             end_date, priority, order_parts, aggregated_tasks)
+                    production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.update_display()
+                    production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.pop_new_task.dismiss()
+                else:
+                    popup_warning = PopupWarningMessage('Nenhuma Tarefa Selecionada')
+                    popup_warning.open()
+            except IndexError:
+                popup_warning = PopupWarningMessage('Há alguma encomenda sem data de entrega')
                 popup_warning.open()
+
+        def return_earliest_date_order_parts(self, selected_order_parts):
+            earliest_date = datetime.datetime(year=int(selected_order_parts[0].due_date.split('/')[2]), month=int(selected_order_parts[0].due_date.split('/')[1]),
+                                              day=int(selected_order_parts[0].due_date.split('/')[0]), hour=17, minute=45)
+            for order_part in selected_order_parts:
+                new_date = datetime.datetime(year=int(order_part.due_date.split('/')[2]), month=int(order_part.due_date.split('/')[1]), day=int(order_part.due_date.split('/')[0]), hour=17, minute=45)
+
+                if new_date < earliest_date:
+                    earliest_date = new_date
+
+            return return_formatted_datetime(earliest_date)
 
 
 class Taskspage_Sidebar(BoxLayout):
@@ -3861,6 +3865,7 @@ class Taskspage_Sidebar(BoxLayout):
 
         self.total_time_LF = 0
         self.total_time_LC5 = 0
+        self.planned_order_parts = {}
 
         self.button_return = Button(text='<<<', font_size='16', halign='center', background_color=color_light_blue)
         self.button_create_new_task = Button(text='Nova\nTarefa', halign='center', font_size='14', background_color=color_light_blue)
@@ -3877,8 +3882,8 @@ class Taskspage_Sidebar(BoxLayout):
         self.button_create_new_task.bind(on_press=self.display_popup_new_task)
         self.button_join_tasks.bind(on_press=self.join_selected_tasks)
         self.button_split_tasks.bind(on_press=self.split_selected_tasks)
-        self.button_delete_tasks.bind(on_press=self.delete_selected_tasks)
-        self.button_produce_tasks.bind(on_press=self.produce_selected_tasks)
+        self.button_delete_tasks.bind(on_press=lambda x: self.display_popup_warning(message='Isto irá apagar as tarefas selecionadas', type='choice', continue_func=self.delete_selected_tasks))
+        self.button_produce_tasks.bind(on_press=lambda x: self.display_popup_warning(message='Isto irá produzir as tarefas selecionadas', type='choice', continue_func=self.produce_selected_tasks))
         self.button_plan_tasks.bind(on_press=self.display_popup_plan_tasks)
 
         self.add_widget(self.button_return)
@@ -4124,14 +4129,22 @@ class Taskspage_Sidebar(BoxLayout):
         production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.update_display()
 
     def delete_selected_tasks(self, *args):
+        any_selected = False
         for added_task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
             if added_task.is_selected:
                 production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.layout_task_list.layout_scroll.remove_widget(added_task)
                 remove_task_database(added_task.rowid)
+                any_selected = True
 
         production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.layout_filters_bar.checkbox_select_all.state = 'normal'
 
+        if not any_selected:
+            self.display_popup_warning('Nenhuma tarefa selecionada')
+        else:
+            self.display_popup_warning('Ta feito')
+
     def produce_selected_tasks(self, *args):
+        any_selected = False
         for task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
             if task.is_selected:
                 for task_order_part_rowid in task.order_parts_rowids:
@@ -4140,15 +4153,28 @@ class Taskspage_Sidebar(BoxLayout):
                         if task_order_part_rowid == task_order_part.rowid:
                             total_produced_quantity = produced_quantity + int(task_order_part.pending_quantity)
                             change_value_order_part_database(total_produced_quantity, 'produced_quantity', task_order_part.rowid)
-
                 production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.layout_task_list.layout_scroll.remove_widget(task)
                 remove_task_database(task.rowid)
+                any_selected = True
                 # TODO After developing productions interface, insert a new production here
 
+        if not any_selected:
+            self.display_popup_warning('Nenhuma tarefa selecionada')
+        else:
+            self.display_popup_warning('Ta feito')
+
     def display_popup_plan_tasks(self, *args):
-        self.layout_plan_tasks = Planning()
-        self.pop_plan_tasks = Popup(title='Planear Tarefas', content=self.layout_plan_tasks, size_hint=(0.8, 0.85))
-        self.pop_plan_tasks.open()
+        any_selected = False
+        for task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
+            if task.is_selected:
+                any_selected = True
+
+        if not any_selected:
+            self.display_popup_warning('Nenhuma tarefa selecionada')
+        else:
+            self.layout_plan_tasks = Planning()
+            self.pop_plan_tasks = Popup(title='Planear Tarefas', content=self.layout_plan_tasks, size_hint=(0.8, 0.85))
+            self.pop_plan_tasks.open()
 
     def plan_selected_tasks(self, starting_time_LF, starting_time_LC5, starting_date_LF, starting_date_LC5, *args):
         selected_tasks_LF = []
@@ -4161,53 +4187,184 @@ class Taskspage_Sidebar(BoxLayout):
                 else:
                     selected_tasks_LC5.append(task)
 
-        selected_tasks_LF.sort(key=lambda x: x.priority, reverse=False)
-        selected_tasks_LC5.sort(key=lambda x: x.priority, reverse=False)
+        selected_tasks_LF.sort(key=lambda x: int(x.priority), reverse=False)
+        selected_tasks_LC5.sort(key=lambda x: int(x.priority), reverse=False)
 
-        shift_times_list_LF = sorted(self.get_avaliable_shift_times('LF3015', starting_date_LF, starting_date_LC5))
-        shift_times_list_LC5 = sorted(self.get_avaliable_shift_times('LC5', starting_date_LF, starting_date_LC5))
+        starting_date_obj_LF = datetime.datetime(year=int(starting_date_LF.split('/')[2]), month=int(starting_date_LF.split('/')[1]),
+                                                 day=int(starting_date_LF.split('/')[0]), hour=int(starting_time_LF.split(':')[0]),
+                                                 minute=int(starting_time_LF.split(':')[1]))
+        starting_date_obj_LC5 = datetime.datetime(year=int(starting_date_LC5.split('/')[2]), month=int(starting_date_LC5.split('/')[1]),
+                                                 day=int(starting_date_LC5.split('/')[0]), hour=int(starting_time_LC5.split(':')[0]),
+                                                 minute=int(starting_time_LC5.split(':')[1]))
 
-        self.build_excel_plan(selected_tasks_LF, selected_tasks_LC5, starting_time_LF, starting_time_LC5, starting_date_LF,  starting_date_LC5, shift_times_list_LF, shift_times_list_LC5)
+        start_times_list_LF = self.get_available_shift_times('LF3015', starting_date_obj_LF)[0]
+        start_times_list_LC5 = self.get_available_shift_times('LC5', starting_date_obj_LC5)[0]
 
-    def get_avaliable_shift_times(self, machine, starting_date_LF, starting_date_LC5):
-        if machine == 'LF3015':
-            starting_year = int(starting_date_LF.split('/')[2])
-            starting_month = int(starting_date_LF.split('/')[1])
-            starting_day = int(starting_date_LF.split('/')[0])
+        stop_times_list_LF = self.get_available_shift_times('LF3015', starting_date_obj_LF)[1]
+        stop_times_list_LC5 = self.get_available_shift_times('LC5', starting_date_obj_LC5)[1]
+
+        start_datetime_LF = round_time(starting_date_obj_LF)
+        start_datetime_LC5 = round_time(starting_date_obj_LC5)
+
+        task_num_cells_dict_LF = {}
+        total_num_cells_LF = 0
+        for task in selected_tasks_LF:
+            task_num_cells = math.ceil(int(task.time) / 15)
+            total_num_cells_LF += task_num_cells
+            task_num_cells_dict_LF.update({task: task_num_cells})
+
+        task_num_cells_dict_LC5 = {}
+        total_num_cells_LC5 = 0
+        for task in selected_tasks_LC5:
+            task_num_cells = math.ceil(int(task.time) / 15)
+            total_num_cells_LC5 += task_num_cells
+            task_num_cells_dict_LC5.update({task: task_num_cells})
+
+        # print(f'TOTAL NUM CELLS LF: {str(total_num_cells_LF)}')
+        # print(f'TOTAL NUM CELLS LC5: {str(total_num_cells_LC5)}')
+        #
+        # print(task_num_cells_dict_LF)
+        # print(task_num_cells_dict_LC5)
+
+        # print(start_times_list_LF)
+        # print(stop_times_list_LF)
+        # print(start_times_list_LC5)
+        # print(stop_times_list_LC5)
+        datetimes_LF = self.return_datetimes_list(start_datetime_LF, start_times_list_LF, stop_times_list_LF, total_num_cells_LF)
+        datetimes_LC5 = self.return_datetimes_list(start_datetime_LC5, start_times_list_LC5, stop_times_list_LC5, total_num_cells_LC5)
+
+        # print('DATETIMES LF')
+        # for d in datetimes_LF:
+        #     print(d)
+        # print('____________________________________________________________________________')
+        # print('DATETIMES LC5')
+        # for d in datetimes_LC5:
+        #     print(d)
+        # print('____________________________________________________________________________')
+
+        self.build_excel_plan(task_num_cells_dict_LF, datetimes_LF, task_num_cells_dict_LC5, datetimes_LC5)
+
+    def return_datetimes_list(self, start_datetime, start_times_list, stop_times_list, total_num_cells):
+        datetimes = []
+
+        start_time = start_datetime
+        while total_num_cells != 0:
+            # print(f'NUM TOTAL CELLS: {total_num_cells}')
+            stop_time = self.return_next_available_time(start_time, stop_times_list)
+
+            times_list = return_times_between_times(start_time, stop_time, datetime.timedelta(minutes=15))
+
+            if total_num_cells > len(times_list):
+                # print(f'{str(total_num_cells)} > {str(len(times_list))} = {total_num_cells > len(times_list)}')
+                for time in times_list:
+                    datetimes.append(time)
+                    # print(f'APPENDING {str(time)}')
+                total_num_cells -= len(times_list)
+            else:
+                # print(f'{str(total_num_cells)} == {str(len(times_list))} = {total_num_cells == len(times_list)}')
+                for i in range(total_num_cells):
+                    datetimes.append(times_list[i])
+                    # print(f'APPENDING {str(times_list[i])}')
+                total_num_cells = 0
+
+            start_time = self.return_next_available_time(stop_time, start_times_list)
+
+        return datetimes
+
+    def return_next_available_time(self, test_datetime, shift_times):
+        # print('CHECKING NEXT AVAILABLE TIME:')
+        for shift_time in shift_times:
+            # print(f'{shift_time} > {test_datetime}')
+            # print(shift_time > test_datetime)
+            if shift_time > test_datetime:
+                return shift_time
+
+        # print('INCREMENTING ONE DAY')
+        for i in range(len(shift_times)):
+            shift_times[i] = return_next_weekday(shift_times[i] + datetime.timedelta(days=1))
+        # print(f'returning next week day: {shift_times[0]}')
+        return shift_times[0]
+
+    def get_available_shift_times(self, machine, starting_date_obj):
+        start_times = []
+        shift_list = self.return_shift_list(machine)
+
+        if len(shift_list) == 3:
+            num_shifts = 1
+            for shift in shift_list:
+                break_start_obj = datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                                    hour=int(shift[3].split(':')[0]), minute=int(shift[3].split(':')[1]))
+                break_duration = datetime.timedelta(minutes=int(shift[4]))
+
+                start_times.append(break_start_obj + break_duration)
+                num_shifts += 1
         else:
-            starting_year = int(starting_date_LC5.split('/')[2])
-            starting_month = int(starting_date_LC5.split('/')[1])
-            starting_day = int(starting_date_LC5.split('/')[0])
+            num_shifts = 1
+            for shift in shift_list:
+                shift_start_obj = datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                                    hour=int(shift[1].split(':')[0]), minute=int(shift[1].split(':')[1]))
+                break_start_obj = datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                                    hour=int(shift[3].split(':')[0]), minute=int(shift[3].split(':')[1]))
+                break_duration = datetime.timedelta(minutes=int(shift[4]))
 
-        shift_list = load_shifts(machine)
-        total_break_times = []
-        total_shift_times = []
+                start_times.append(shift_start_obj)
+                start_times.append(break_start_obj + break_duration)
+                num_shifts += 1
 
-        step_interval = datetime.timedelta(minutes=15)
+        if len(shift_list) == 1:
+            stop_times = [datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                                hour=int(shift_list[0][3].split(':')[0]), minute=int(shift_list[0][3].split(':')[1])),
+                          datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                            hour=int( shift_list[0][2].split(':')[0]), minute=int( shift_list[0][2].split(':')[1]))]
+        elif len(shift_list) == 2:
+            stop_times = [datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                            hour=int(shift_list[0][3].split(':')[0]), minute=int(shift_list[0][3].split(':')[1])),
+                          datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                            hour=int(shift_list[1][3].split(':')[0]), minute=int(shift_list[1][3].split(':')[1])),
+                          datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                            hour=int(shift_list[1][2].split(':')[0]), minute=int(shift_list[1][2].split(':')[1]))]
+        else:
+            stop_times = [datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                            hour=int(shift_list[0][3].split(':')[0]), minute=int(shift_list[0][3].split(':')[1])),
+                          datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                            hour=int(shift_list[1][3].split(':')[0]), minute=int(shift_list[1][3].split(':')[1])),
+                          datetime.datetime(year=starting_date_obj.year, month=starting_date_obj.month, day=starting_date_obj.day,
+                                            hour=int(shift_list[2][3].split(':')[0]), minute=int(shift_list[2][3].split(':')[1]))]
 
-        for shift in shift_list:
-            break_start_time_obj = datetime.datetime(year=starting_year, month=starting_month, day=starting_day, hour=int(shift[3].split(':')[0]), minute=int(shift[3].split(':')[1]))
-            break_duration_obj = datetime.timedelta(minutes=int(shift[4]))
-            break_finish_time_obj = break_start_time_obj + break_duration_obj
+        previous_time = start_times[0]
+        for time in start_times:
+            if time < previous_time:
+                start_times[start_times.index(time)] = return_next_weekday(start_times[start_times.index(time)] + datetime.timedelta(days=1))
 
-            break_times = return_times_between_times(break_start_time_obj, break_finish_time_obj, step_interval)
-            break_times.remove(break_times[0])
-            break_times.remove(break_times[-1])
-            total_break_times += break_times
+            previous_time = time
 
-            shift_start_time_obj = datetime.datetime(year=starting_year, month=starting_month, day=starting_day, hour=int(shift[1].split(':')[0]), minute=int(shift[1].split(':')[1]))
-            shift_finish_time_obj = datetime.datetime(year=starting_year, month=starting_month, day=starting_day, hour=int(shift[2].split(':')[0]), minute=int(shift[2].split(':')[1]))
+        previous_time = stop_times[0]
+        for time in stop_times:
+            if time < previous_time:
+                stop_times[stop_times.index(time)] = return_next_weekday(stop_times[stop_times.index(time)] + datetime.timedelta(days=1))
 
-            shift_times = return_times_between_times(shift_start_time_obj, shift_finish_time_obj, step_interval)
-            total_shift_times += shift_times
+            previous_time = time
+        #
+        # print(f'START TIMES STARTING AT {starting_date_obj} for machine {machine} working with {num_shifts - 1} shifts')
+        # print(start_times)
+        # print(f'STOP TIMES STARTING AT {starting_date_obj} for machine {machine} working with {num_shifts - 1} shifts')
+        # print(stop_times)
+        return (start_times, stop_times)
 
-        total_shift_times = set(total_shift_times) - set(total_break_times)
+    def return_shift_list(self, machine):
+        shift_list = []
+        if machine == 'LF3015':
+            for shift in self.layout_plan_tasks.added_shifts_LF:
+                shift_list.append([machine, shift.ti_time_start.text, shift.ti_time_finish.text, shift.ti_time_break.text, shift.ti_break_duration.text])
+        else:
+            for shift in self.layout_plan_tasks.added_shifts_LC5:
+                shift_list.append([machine, shift.ti_time_start.text, shift.ti_time_finish.text, shift.ti_time_break.text, shift.ti_break_duration.text])
 
-        return list(total_shift_times)
+        return shift_list
 
-    def build_excel_plan(self, selected_tasks_LF, selected_tasks_LC5, starting_time_LF, starting_time_LC5, starting_date_LF, starting_date_LC5, shift_times_LF, shift_times_LC5):
+    def build_excel_plan(self, task_num_cells_dict_LF, datetimes_LF, task_num_cells_dict_LC5, datetimes_LC5):
 
-        outWorkbook = xls.Workbook('Planeamento.xlsx')
+        outWorkbook = xls.Workbook('Planeamento_Laser.xlsx')
 
         gen_format_1 = outWorkbook.add_format({
             'bold': 0,
@@ -4247,81 +4404,278 @@ class Taskspage_Sidebar(BoxLayout):
 
         color_iterator = cycle([gen_format_1, gen_format_2, gen_format_3])
 
-        total_cells_LF = 0
-        for task_LF in selected_tasks_LF:
-            num_cells = math.ceil((task_LF.time) / 15)
-            total_cells_LF += num_cells
-
-        total_cells_LC5 = 0
-        for task_LC5 in selected_tasks_LC5:
-            num_cells = math.ceil((task_LC5.time) / 15)
-            total_cells_LC5 += num_cells
-
-
-        # shift_times_LC5 = self.update_times(total_cells_LC5, starting_time_LC5, shift_times_LC5)
-
-
         outSheetPlanning = outWorkbook.add_worksheet('Planeamento')
-        outSheetList = outWorkbook.add_worksheet('Listagem')
-
 
         # LF PLANNING
         outSheetPlanning.write(1, 1, 'LF-3015', header_format)
+        outSheetPlanning.write(1, 2, len(production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.layout_plan_tasks.added_shifts_LF),
+                               header_format)
+        outSheetPlanning.write(1, 3, 'Turnos', header_format)
 
-        starting_time_LF = round_time(starting_time_LF)
-        start_date_LF = datetime.datetime(year=int(starting_date_LF.split('/')[2]), month=int(starting_date_LF.split('/')[1]), day=int(starting_date_LF.split('/')[0]), hour=int(starting_time_LF.split(':')[0]), minute=int(starting_time_LF.split(':')[1]))
+        datetimes_LF_iter = cycle(datetimes_LF)
+        previous_date = datetimes_LF[0]
 
-        shift_times_LF = self.update_times(total_cells_LF, start_date_LF, shift_times_LF)
-        iter_shift_times_LF = cycle(shift_times_LF)
+        date_row = 2
+        time_row = 3
+        job_row = 4
+        date_col = 1
+        time_col = 1
+        job_col = 1
+        task_counter = 0
+        for task in task_num_cells_dict_LF:
+            task_counter += 1
+            task_name = f'T{str(task_counter)}-{task.material}'
+            task_input_message = self.generate_task_input_message(task.order_parts_objects)
 
+            # print(f'{task_name} = {str(task_num_cells_dict_LF[task])} CELLS')
+            finish_time = 0
+            for _ in range(task_num_cells_dict_LF[task]):
+                time = next(datetimes_LF_iter)
+                formatted_time = f'{time.hour}:{time.minute}h'
+                outSheetPlanning.write(time_row, time_col, formatted_time, header_format)
+                # print(f'Writing: {formatted_time}')
 
+                # CHECKING FOR DAY CHANGE
+                if time.day != previous_date.day or time.month != previous_date.month or time.year != previous_date.year:
+                    # print('CHANGING DAY')
+                    formatted_date = f'{previous_date.day}/{previous_date.month}/{previous_date.year}'
+                    # print(f'CHANGING PREVIOUS DATE FROM {str(previous_date)} TO {str(time)}')
+                    previous_date = time
 
-        # row_LF = 3
-        # col_LF = 1
-        # counter = 1
-        # day_multiplier = 0
-        # col_start_day = col_LF
-        #
-        # for task_LF in selected_tasks_LF:
-        #     name_task = 'T' + str(counter)
-        #     minutes_task = int(task_LF.time)
-        #     num_cells = math.ceil(minutes_task / 15)  # 15 Because each cell equals 15 mins
-        #
-        #     # print('MINUTES = ' + str(minutes_task))
-        #     # print('NUM CELLS = ' + str(num_cells))
-        #
-        #     starting_col_LF = col_LF
-        #     for _ in range(num_cells):
-        #         current_time = next(iter_shift_times_LF) + datetime.timedelta(days=day_multiplier)
-        #
-        #         if is_last_index_list(current_time, shift_times_LF):
-        #             current_date_string = f'{current_time.day}/{current_time.month}/{current_time.year}'
-        #             outSheetPlanning.merge_range(row_LF-1, starting_col_LF, row_LF-1, col_LF, current_date_string, header_format)
-        #             day_multiplier += 1
-        #
-        #
-        #         current_time_string = f'{current_time.hour}:{current_time.minute}'
-        #
-        #         outSheetPlanning.write(row_LF, col_LF, current_time_string, header_format)
-        #
-        #         col_LF += 1
-        #
-        #     if starting_col_LF == col_LF-1:
-        #         outSheetPlanning.write(row_LF + 1, starting_col_LF, name_task, next(color_iterator))
-        #     else:
-        #         outSheetPlanning.merge_range(row_LF+1, starting_col_LF, row_LF+1, col_LF-1, name_task, next(color_iterator))
-        #
-        #     counter += 1
-        #
-        # row_LC5 = 6
-        # col_LC5 = 1
+                    # print(f'{date_col} == {time_col} = {date_col == time_col}')
+                    if date_col == time_col:
+                        outSheetPlanning.write(date_row, date_col, formatted_date, header_format)
+                        # print(f'WRITING {formatted_date} ON {date_row},{date_col}')
+                    else:
+                        outSheetPlanning.merge_range(date_row, date_col, date_row, time_col - 1, formatted_date, header_format)
+                        # print(f'MERGING {formatted_date} ON {date_row},{date_col},{date_row},{time_col - 1}')
 
+                    date_col = time_col
 
+                time_col += 1
+
+                finish_time = time
+
+            # JOB/TASK FILL
+            if job_col == time_col - 1:
+                outSheetPlanning.write(job_row, job_col, task_name, next(color_iterator))
+                # print(f'WRITING {task_name} ON {job_row},{job_col}')
+            else:
+                outSheetPlanning.merge_range(job_row, job_col, job_row, time_col - 1, task_name, next(color_iterator))
+                # print(f'MERGING {task_name} ON {job_row},{job_col},{job_row},{time_col - 1}')
+
+            outSheetPlanning.data_validation(job_row, job_col, job_row, time_col - 1, {'validate': 'integer',
+                                                                                   'criteria': '<',
+                                                                                   'value': 10,
+                                                                                   'input_title': 'Cliente | Encomenda',
+                                                                                   'input_message': task_input_message})
+            job_col = time_col
+
+            # UPDATING PLANNED ORDER PARTS DICT
+            for order_part in task.order_parts_objects:
+                self.planned_order_parts.update({order_part: finish_time})
+
+        formatted_date = f'{previous_date.day}/{previous_date.month}/{previous_date.year}'
+        if date_col == time_col:
+            outSheetPlanning.write(date_row, date_col, formatted_date, header_format)
+        else:
+            outSheetPlanning.merge_range(date_row, date_col, date_row, time_col - 1, formatted_date, header_format)
+
+        # LC5 PLANNING
+        outSheetPlanning.write(6, 1, 'LC5', header_format)
+        outSheetPlanning.write(6, 2, len(production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.layout_plan_tasks.added_shifts_LC5),
+                               header_format)
+        outSheetPlanning.write(6, 3, 'Turnos', header_format)
+
+        datetimes_LC5_iter = cycle(datetimes_LC5)
+        previous_date = datetimes_LC5[0]
+
+        date_row = 7
+        time_row = 8
+        job_row = 9
+        date_col = 1
+        time_col = 1
+        job_col = 1
+        task_counter = 0
+        for task in task_num_cells_dict_LC5:
+            task_counter += 1
+            task_name = f'T{str(task_counter)}-{task.material}'
+            task_input_message = self.generate_task_input_message(task.order_parts_objects)
+
+            # print(f'{task_name} = {str(task_num_cells_dict_LF[task])} CELLS')
+            finish_time = 0
+            for _ in range(task_num_cells_dict_LC5[task]):
+                time = next(datetimes_LC5_iter)
+                formatted_time = f'{time.hour}:{time.minute}h'
+                outSheetPlanning.write(time_row, time_col, formatted_time, header_format)
+                # print(f'Writing: {formatted_time}')
+
+                # CHECKING FOR DAY CHANGE
+                if time.day != previous_date.day or time.month != previous_date.month or time.year != previous_date.year:
+                    # print('CHANGING DAY')
+                    formatted_date = f'{previous_date.day}/{previous_date.month}/{previous_date.year}'
+                    # print(f'CHANGING PREVIOUS DATE FROM {str(previous_date)} TO {str(time)}')
+                    previous_date = time
+
+                    # print(f'{date_col} == {time_col} = {date_col == time_col}')
+                    if date_col == time_col:
+                        outSheetPlanning.write(date_row, date_col, formatted_date, header_format)
+                        # print(f'WRITING {formatted_date} ON {date_row},{date_col}')
+                    else:
+                        outSheetPlanning.merge_range(date_row, date_col, date_row, time_col - 1, formatted_date, header_format)
+                        # print(f'MERGING {formatted_date} ON {date_row},{date_col},{date_row},{time_col - 1}')
+
+                    date_col = time_col
+
+                time_col += 1
+
+                finish_time = time
+
+            # JOB/TASK FILL
+            if job_col == time_col - 1:
+                outSheetPlanning.write(job_row, job_col, task_name, next(color_iterator))
+                # print(f'WRITING {task_name} ON {job_row},{job_col}')
+            else:
+                outSheetPlanning.merge_range(job_row, job_col, job_row, time_col - 1, task_name, next(color_iterator))
+                # print(f'MERGING {task_name} ON {job_row},{job_col},{job_row},{time_col - 1}')
+
+            outSheetPlanning.data_validation(job_row, job_col, job_row, time_col - 1, {'validate': 'integer',
+                                                                                       'criteria': '<',
+                                                                                       'value': 10,
+                                                                                       'input_title': 'Cliente | Encomenda',
+                                                                                       'input_message': task_input_message})
+            job_col = time_col
+
+            # UPDATING PLANNED ORDER PARTS DICT
+            for order_part in task.order_parts_objects:
+                self.planned_order_parts.update({order_part: finish_time})
+
+        formatted_date = f'{previous_date.day}/{previous_date.month}/{previous_date.year}'
+        if date_col == time_col:
+            outSheetPlanning.write(date_row, date_col, formatted_date, header_format)
+        else:
+            outSheetPlanning.merge_range(date_row, date_col, date_row, time_col - 1, formatted_date, header_format)
+
+        # DATE GENERATED
+        now_date = datetime.datetime.now()
+        outSheetPlanning.write(12, 1, 'PLANEADO A:', header_format)
+        outSheetPlanning.write(12, 2, f'{now_date.hour}:{now_date.minute}', header_format)
+        outSheetPlanning.write(12, 3, f'{now_date.day}/{now_date.month}/{now_date.year}', header_format)
+
+        # ORDERS PAGE
+        outSheetOrders = outWorkbook.add_worksheet('Estados Enc.')
+
+        starting_row = 1
+        starting_col = 1
+
+        # Write header
+        outSheetOrders.write(starting_row, starting_col, 'Cliente', header_format)
+        outSheetOrders.write(starting_row, starting_col + 1, 'Encomenda', header_format)
+        outSheetOrders.write(starting_row, starting_col + 2, 'Estado', header_format)
+        outSheetOrders.write(starting_row, starting_col + 3, 'Data Objetivo', header_format)
+        outSheetOrders.write(starting_row, starting_col + 4, 'Data Conclusão Corte', header_format)
+        outSheetOrders.write(starting_row, starting_col + 5, 'Op. Adic.', header_format)
+        outSheetOrders.write(starting_row, starting_col + 6, 'Nome Peça', header_format)
+        outSheetOrders.write(starting_row, starting_col + 7, 'Qtd.', header_format)
+        outSheetOrders.write(starting_row, starting_col + 8, 'Matéria-prima', header_format)
+
+        starting_row += 1
+
+        for order_part_info in load_order_parts_from_database():
+            order_part_ref = order_part_info[0]
+            order_part_name = order_part_info[1]
+            order_part_material_ref = order_part_info[2]
+            order_part_material = get_material_name(order_part_material_ref)
+            order_part_quantity = order_part_info[3]
+            order_part_produced_quantity = order_part_info[4]
+            order_part_order_num = order_part_info[5]
+            order_part_order_num_client = order_part_info[6]
+            order_part_client = order_part_info[7]
+            order_part_date_modified = order_part_info[8]
+            order_part_due_date = order_part_info[9]
+            order_part_additional_operations = order_part_info[10]
+            order_part_rowid = order_part_info[11]
+
+            state = self.select_cell_state(order_part_ref, order_part_name, order_part_material_ref, order_part_quantity, order_part_produced_quantity, order_part_order_num, order_part_order_num_client, order_part_client, order_part_date_modified, order_part_due_date, order_part_additional_operations, order_part_rowid, self.planned_order_parts)
+            formatting = outWorkbook.add_format({'bold': 0, 'border': 2, 'align': 'center', 'valign': 'vcenter', 'fg_color': self.select_cell_color(state), 'font_size': 12})
+
+            # COMPARING DUE DATE AND FINISH DATE
+            finish_date_obj = self.return_finish_date(order_part_ref, order_part_name, order_part_material_ref, order_part_quantity, order_part_produced_quantity,
+                                                      order_part_order_num, order_part_order_num_client, order_part_client, order_part_date_modified,
+                                                      order_part_due_date, order_part_additional_operations, order_part_rowid, self.planned_order_parts)
+
+            if order_part_due_date != '' and finish_date_obj != 'N/A':
+                due_date_obj = datetime.datetime(year=int(order_part_due_date.split('/')[2]), month=int(order_part_due_date.split('/')[1]),
+                                                 day=int(order_part_due_date.split('/')[0]), hour=17, minute=45)
+
+                if finish_date_obj > due_date_obj:
+                    formatting.set_font_color('red')
+
+            outSheetOrders.set_column(1, 5, 30)
+            outSheetOrders.write(starting_row, starting_col, order_part_client, formatting)
+            starting_col += 1
+            outSheetOrders.write(starting_row, starting_col, order_part_order_num, formatting)
+            starting_col += 1
+            outSheetOrders.write(starting_row, starting_col, state, formatting)
+            starting_col += 1
+            outSheetOrders.write(starting_row, starting_col, '17:45 - ' + order_part_due_date if order_part_due_date != '' else 'N/A', formatting)
+            starting_col += 1
+            outSheetOrders.write(starting_row, starting_col, return_formatted_datetime(finish_date_obj) if finish_date_obj != 'N/A' else finish_date_obj, formatting)
+            starting_col += 1
+            outSheetOrders.write(starting_row, starting_col, 'Sim' if order_part_additional_operations else 'Não', formatting)
+            starting_col += 1
+            outSheetOrders.write(starting_row, starting_col, order_part_name, formatting)
+            starting_col += 1
+            outSheetOrders.set_column(6, 6, 20)
+            outSheetOrders.write(starting_row, starting_col, order_part_quantity, formatting)
+            starting_col += 1
+            outSheetOrders.set_column(7, 7, 30)
+            outSheetOrders.write(starting_row, starting_col, order_part_material, formatting)
+
+            starting_col = 1
+            starting_row += 1
 
         outWorkbook.close()
 
+        layout_popup_inform_success = BoxLayout(orientation='vertical')
+        layout_popup_inform_success.add_widget(Label(text='Planeamento com sucesso'))
+        button_open_doc = Button(text='Abrir', font_size='16', halign='center', background_color=color_light_blue)
+        button_open_doc.bind(on_press=lambda x: os.startfile("Planeamento_Laser.xlsx"))
+        layout_popup_inform_success.add_widget(button_open_doc)
+
+        popup_inform_generated_successfully = Popup(title='Sucesso', content=layout_popup_inform_success, size_hint=(0.2, 0.15))
+        popup_inform_generated_successfully.open()
+
+    def select_cell_state(self, order_part_ref, order_part_name, order_part_material_ref, order_part_quantity, order_part_produced_quantity, order_part_order_num, order_part_order_num_client, order_part_client, order_part_date_modified, order_part_due_date, order_part_additional_operations, order_part_rowid , planned_order_parts):
+        if order_part_produced_quantity >= order_part_quantity:
+            if order_part_additional_operations:
+                return 'A aguardar operações adicionais'
+            else:
+                return 'Concluído'
+        else:
+            for planned_order_part in planned_order_parts:
+                if order_part_name == planned_order_part.name and str(order_part_quantity) == planned_order_part.quantity and str(order_part_produced_quantity) == planned_order_part.produced_quantity and order_part_client == planned_order_part.client and order_part_order_num == planned_order_part.order_num and order_part_rowid == planned_order_part.rowid:
+                    return 'Planeado'
+        return 'Não planeado'
+
+    def select_cell_color(self, cell_state):
+        if cell_state == 'Concluído':
+            return 'DBFF99'
+        elif cell_state == 'A aguardar operações adicionais':
+            return 'FFFC99'
+        elif cell_state == 'Planeado':
+            return 'FFD899'
+        elif cell_state == 'Não planeado':
+            return 'FFFFFF'
+
+    def return_finish_date(self, order_part_ref, order_part_name, order_part_material_ref, order_part_quantity, order_part_produced_quantity, order_part_order_num, order_part_order_num_client, order_part_client, order_part_date_modified, order_part_due_date, order_part_additional_operations, order_part_rowid, planned_order_parts):
+        for planned_order_part in planned_order_parts:
+            if order_part_name == planned_order_part.name and str(order_part_quantity) == planned_order_part.quantity and str(order_part_produced_quantity) == planned_order_part.produced_quantity and order_part_client == planned_order_part.client and order_part_order_num == planned_order_part.order_num and order_part_rowid == planned_order_part.rowid:
+                return planned_order_parts[planned_order_part]
+
+        return 'N/A'
+
     def update_times(self, num_total_cells, start_date, shift_times):
-        # TODO SOLVE PROBLEM WHEN START TIME IS NOT IN LIST. IT SHOULD RETURN NEXT POSSIBLE TIME
         new_shift_times = []
         iterator_shift_times = cycle(shift_times)
         day_multiplier = 0
@@ -4331,18 +4685,47 @@ class Taskspage_Sidebar(BoxLayout):
         for _ in range(index_time_start):
             next(iterator_shift_times)
 
+        last_date = start_date
         for _ in range(num_total_cells):
             current_date = next(iterator_shift_times)
+            current_date = current_date.replace(day=last_date.day, month=last_date.month, year=last_date.year)
 
-            current_date = current_date + datetime.timedelta(days=day_multiplier)
+            current_date = return_next_weekday(current_date + datetime.timedelta(days=day_multiplier))
+            last_date = current_date
+
             new_shift_times.append(current_date)
 
             if current_date.hour == shift_times[-1].hour and current_date.minute == shift_times[-1].minute:
-                day_multiplier += 1
+                last_date += datetime.timedelta(days=1)
 
         return new_shift_times
 
+    def return_next_valid_start_time(self, starting_time, shift_times):
+        starting_hours = int(starting_time.split(':')[0])
+        starting_minutes = int(starting_time.split(':')[1])
+        while True:
+            for shift_time in shift_times:
+                if starting_hours == shift_time.hour and starting_minutes == shift_time.minute:
+                    return starting_time
 
+            start_time_obj = datetime.datetime(year=shift_times[0].year, month=shift_times[0].month, day=shift_times[0].day, hour=starting_hours,
+                                               minute=starting_minutes)
+            start_time_obj += datetime.timedelta(minutes=15)
+            starting_hours = start_time_obj.hour
+            starting_minutes = start_time_obj.minute
+            starting_time = str(starting_hours) + ':' + str(starting_minutes)
+
+    def generate_task_input_message(self, order_parts_objects):
+        task_input_message_list = []
+        for obj in order_parts_objects:
+            task_input_message_list.append(f'{obj.client} | {obj.order_num}\n')
+
+        task_input_message = ''.join(set(task_input_message_list))
+        return task_input_message
+
+    def display_popup_warning(self, message, type='warning', continue_func=''):
+        self.popup_warning_delete = PopupWarningMessage(message=message, type=type, continue_func=continue_func)
+        self.popup_warning_delete.open()
 
     def set_total_time_machines(self, *args):
         current_tasks = [task for task in load_tasks_from_database()]
@@ -4704,6 +5087,7 @@ class Task(BoxLayout):
             change_value_task_database(int(value), field, rowid)
             self.button_time.text = return_formatted_time_string(int(value))
             self.time_display_button = self.button_time.text
+            self.time = int(value)
 
             print(f'TIME == {self.time}')
 

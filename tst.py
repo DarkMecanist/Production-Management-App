@@ -1,30 +1,16 @@
-# TEST LOOPING FROM THE MIDDLE
+import datetime
 
-# from itertools import cycle
-# import math
-#
-# job_time = 60
-#
-# time_list = cycle(['6:00', '6:15', '6:30', '6:45', '7:00', '7:15', '7:30', '7:45', '8:00'])
-#
-# num_cells = math.ceil(job_time / 15) + 1
-#
-# print(num_cells)
-#
-# for _ in range(num_cells):
-#     c = next(time_list)
-#
-# print(c)
+def return_duration_between_dates(date_start, date_finish):
+    duration = date_finish - date_start
 
-from itertools import cycle
+    if duration.days == 2:
+        return duration - datetime.timedelta(days=2)
 
-def return_next_possible_time(time_string, time_list):
-    valid_time = False
-    iterator_time_list = cycle(time_list)
+    return duration
 
-    while valid_time == False:
-        try:
-            time_list.index(next(iterator_time_list))
-        except ValueError:
-            continue
+date_1 = datetime.datetime(year=2021, month=3, day=5, hour=23, minute=30)
+date_2 = datetime.datetime(year=2021, month=3, day=8, hour=0, minute=30)
+date_3 = datetime.datetime(year=2021, month=3, day=9, hour=0, minute=30)
 
+duration = return_duration_between_dates(date_2, date_3)
+print(duration)
