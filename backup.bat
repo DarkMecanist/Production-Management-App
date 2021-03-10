@@ -1,1 +1,0 @@
-"C:\Python39\python.exe" "D:\PROJETOS\PROJETOS PYTHON\Projetos Trabalho\SOFTWARE PLANEAMENTO\backup.py"
