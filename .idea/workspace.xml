@@ -3,7 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="24afb481-3ca0-4870-9c72-10b4cfc51e41" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Database.db" beforeDir="false" afterPath="$PROJECT_DIR$/Database.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/REGISTOS/registo.xlsx" beforeDir="false" afterPath="$PROJECT_DIR$/REGISTOS/registo.xlsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/software_planeamento.py" beforeDir="false" afterPath="$PROJECT_DIR$/software_planeamento.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -15,11 +15,11 @@
   <component name="CoverageDataManager">
     <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$software_planeamento___Cópia.coverage" NAME="software_planeamento - Cópia Coverage Results" MODIFIED="1654349614168" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$gerar_backup_base_dados.coverage" NAME="gerar_backup_base_dados Coverage Results" MODIFIED="1613641217390" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$test.coverage" NAME="test Coverage Results" MODIFIED="1618957293652" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$test.coverage" NAME="test Coverage Results" MODIFIED="1654353645563" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$db_stuff.coverage" NAME="db_stuff Coverage Results" MODIFIED="1614172294691" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$backup.coverage" NAME="backup Coverage Results" MODIFIED="1613655142919" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$tst.coverage" NAME="tst Coverage Results" MODIFIED="1614348057932" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$software_planeamento.coverage" NAME="software_planeamento Coverage Results" MODIFIED="1654349791286" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/SOFTWARE_PLANEAMENTO$software_planeamento.coverage" NAME="software_planeamento Coverage Results" MODIFIED="1654355758467" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
   <component name="DatabaseView">
     <option name="SHOW_INTERMEDIATE" value="true" />
@@ -89,22 +89,22 @@
       </usages-collector>
       <usages-collector id="statistics.file.extensions.open">
         <counts>
-          <entry key="py" value="3" />
+          <entry key="py" value="5" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.open">
         <counts>
-          <entry key="Python" value="3" />
+          <entry key="Python" value="5" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="py" value="93" />
+          <entry key="py" value="852" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="Python" value="93" />
+          <entry key="Python" value="852" />
         </counts>
       </usages-collector>
     </session>
@@ -114,8 +114,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/software_planeamento.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-670">
-              <caret line="4745" column="8" selection-start-line="4745" selection-start-column="8" selection-end-line="4745" selection-end-column="8" />
+            <state relative-caret-position="247">
+              <caret line="5712" lean-forward="true" selection-start-line="5712" selection-end-line="5712" />
               <folding>
                 <element signature="e#0#11#0" expanded="true" />
                 <element signature="e#1163#1276#0" />
@@ -562,6 +562,7 @@
                 <element signature="e#195857#195972#0" />
                 <element signature="e#196060#196737#0" />
                 <element signature="e#196402#196676#0" />
+                <element signature="e#249576#249878#0" />
               </folding>
             </state>
           </provider>
@@ -589,6 +590,7 @@
       <find>create</find>
       <find>insert</find>
       <find>select</find>
+      <find>Registar</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -613,11 +615,14 @@
     <detection-done>true</detection-done>
     <sorting>DEFINITION_ORDER</sorting>
   </component>
-  <component name="ProjectFrameBounds" extendedState="6">
-    <option name="x" value="-8" />
+  <component name="ProjectFrameBounds" extendedState="7">
+    <option name="x" value="952" />
     <option name="y" value="-8" />
-    <option name="width" value="1936" />
+    <option name="width" value="976" />
     <option name="height" value="1056" />
+  </component>
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="1" id="Add" />
   </component>
   <component name="ProjectView">
     <navigator proportions="" version="1">
@@ -649,7 +654,7 @@
   </component>
   <component name="PropertiesComponent">
     <property name="WebServerToolWindowFactoryState" value="false" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="last_opened_file_path" value="$USER_HOME$/Desktop/software_planeamento - Cópia.py" />
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
     <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
@@ -787,8 +792,8 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.software_planeamento" />
-        <item itemvalue="Python.software_planeamento - Cópia" />
         <item itemvalue="Python.test" />
+        <item itemvalue="Python.software_planeamento - Cópia" />
         <item itemvalue="Python.tst" />
         <item itemvalue="Python.db_stuff" />
       </list>
@@ -818,13 +823,14 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
+    <editor active="true" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.15245202" />
+      <window_info active="true" content_ui="combo" id="Project" order="0" visible="true" weight="0.15245202" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Favorites" order="2" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
       <window_info anchor="bottom" id="Find" order="1" />
-      <window_info active="true" anchor="bottom" id="Run" order="2" visible="true" weight="0.43926248" />
+      <window_info anchor="bottom" id="Run" order="2" visible="true" weight="0.43926248" />
       <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
       <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
@@ -849,6 +855,17 @@
   </component>
   <component name="VcsContentAnnotationSettings">
     <option name="myLimit" value="2678400000" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/software_planeamento.py</url>
+          <line>4767</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
   <component name="editorHistoryManager">
     <entry file="file://$PROJECT_DIR$/gerar_backup_base_dados.py" />
@@ -910,13 +927,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/test.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="34">
-          <caret line="2" selection-start-line="2" selection-end-line="10" selection-end-column="38" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/software_planeamento - Cópia.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="272">
@@ -927,10 +937,29 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/test.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="272">
+          <caret line="16" column="63" selection-start-line="16" selection-start-column="53" selection-end-line="16" selection-end-column="63" />
+          <folding>
+            <element signature="e#0#19#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/Desktop/software_planeamento - Cópia.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state>
+          <folding>
+            <element signature="e#0#11#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/software_planeamento.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-670">
-          <caret line="4745" column="8" selection-start-line="4745" selection-start-column="8" selection-end-line="4745" selection-end-column="8" />
+        <state relative-caret-position="247">
+          <caret line="5712" lean-forward="true" selection-start-line="5712" selection-end-line="5712" />
           <folding>
             <element signature="e#0#11#0" expanded="true" />
             <element signature="e#1163#1276#0" />
@@ -1377,6 +1406,7 @@
             <element signature="e#195857#195972#0" />
             <element signature="e#196060#196737#0" />
             <element signature="e#196402#196676#0" />
+            <element signature="e#249576#249878#0" />
           </folding>
         </state>
       </provider>

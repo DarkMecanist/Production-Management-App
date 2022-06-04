@@ -4753,10 +4753,10 @@ class Taskspage_Sidebar(BoxLayout):
             self.display_popup_warning('Nenhuma tarefa selecionada')
         else:
             suggested_date = return_next_weekday(datetime.datetime.now())
-            suggested_date_string = f'{suggested_date.day}/{suggested_date.month}/{suggested_date.year}'
+            suggested_date_string = f'{suggested_date.year}/{suggested_date.month:02d}/{suggested_date.day:02d}'
 
             self.layout_register_tasks = BoxLayout(orientation='vertical')
-            self.layout_register_tasks.add_widget(Label(text='Insere a data do registo (dd/mm/aaaa)'))
+            self.layout_register_tasks.add_widget(Label(text='Insere a data do registo (aaaa/mm/dd)'))
             ti_date = TextInput(text=suggested_date_string, size_hint_y=0.5)
             self.layout_register_tasks.add_widget(ti_date)
             self.layout_register_tasks.add_widget(Label(size_hint_y=0.5))
@@ -4770,15 +4770,15 @@ class Taskspage_Sidebar(BoxLayout):
             df = pd.read_excel(CAMINHO_EXCEL)
 
             selected_tasks = []
-            counter_part = 1
+            counter_part = self.return_starting_counter(string_date_register, df, "Ordem Produção")
 
             for task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
                 if task.is_selected:
                     selected_tasks.append(task)
 
-            counter_task = 1
+            counter_task = self.return_starting_counter(string_date_register, df, "Trabalho")
             for task in selected_tasks:
-                task_name = string_date_register + "_T" + str(counter_task)
+                task_name = string_date_register + f"_T{counter_task:02d}"
                 task_machine = task.machine
                 task_path = task.current_path
                 task_material_name = task.material.split(',')[0].split(' ')[0]
@@ -4787,7 +4787,7 @@ class Taskspage_Sidebar(BoxLayout):
                 task_material_owner = task.material.split(',')[1].split(' ')[2]
 
                 for part in task.order_parts_objects:
-                    production_order = 'OP_' + string_date_register + '_P' + str(counter_part)
+                    production_order = 'OP_' + string_date_register + f'_P{counter_part:03d}'
 
                     info_row = {'Ordem Produção': production_order, 'Trabalho': task_name, 'Máquina': task_machine, 'Caminho': task_path, 'Cliente': part.client, 'Encomenda': part.order_num,
                                 'Material': task_material_name, 'Liga (acabamento)': task_material_spec, 'Espessura': task_material_thickness,
@@ -4804,6 +4804,17 @@ class Taskspage_Sidebar(BoxLayout):
 
         except PermissionError:
             self.display_popup_warning("Folha de Excel aberta")
+
+    def return_starting_counter(self, date_string, df, column, *args):
+        filtered_df = df[df[column].str.contains(date_string)]
+
+        ##print("STARTING STRING: " + date_string)
+        ##print("NUM ROWS FILTERED: " + str(filtered_df.shape[0]))
+
+        if filtered_df.shape[0] == 0:
+            return 1
+        else:
+            return int(str(re.search("_[P|T](\d{2,3})$", filtered_df.iloc[-1][column]).groups()[0])) + 1
 
 
 class Taskspage(BoxLayout):
