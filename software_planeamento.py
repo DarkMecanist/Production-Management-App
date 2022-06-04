@@ -2,7 +2,6 @@ import kivy
 import sqlite3
 import math
 import string
-import operator
 import datetime
 import time as tm
 import re, fitz, os
@@ -17,6 +16,7 @@ from fpdf import FPDF
 from itertools import combinations, cycle
 import xlsxwriter as xls
 import operator
+import pandas as pd
 
 kivy.require('1.11.0')
 from kivy.config import Config
@@ -3874,6 +3874,7 @@ class Taskspage_Sidebar(BoxLayout):
         self.button_delete_tasks = Button(text='Apagar\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
         self.button_produce_tasks = Button(text='Produzir\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
         self.button_plan_tasks = Button(text='Planear\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
+        self.button_register_tasks = Button(text='Registar\nTarefas\nSelecionadas', halign='center', font_size='14', background_color=color_light_blue)
 
         self.label_machine_time_LF = Label(text=f'Tempo Total LF:\n {self.total_time_LF} H')
         self.label_machine_time_LC5 = Label(text=f'Tempo Total LC5:\n {self.total_time_LC5} H')
@@ -3885,6 +3886,7 @@ class Taskspage_Sidebar(BoxLayout):
         self.button_delete_tasks.bind(on_press=lambda x: self.display_popup_warning(message='Isto irá apagar as tarefas selecionadas', type='choice', continue_func=self.delete_selected_tasks))
         self.button_produce_tasks.bind(on_press=lambda x: self.display_popup_warning(message='Isto irá produzir as tarefas selecionadas', type='choice', continue_func=self.produce_selected_tasks))
         self.button_plan_tasks.bind(on_press=self.display_popup_plan_tasks)
+        self.button_register_tasks.bind(on_press=self.display_popup_register_tasks)
 
         self.add_widget(self.button_return)
         self.add_widget(self.button_create_new_task)
@@ -3893,6 +3895,7 @@ class Taskspage_Sidebar(BoxLayout):
         self.add_widget(self.button_delete_tasks)
         self.add_widget(self.button_produce_tasks)
         self.add_widget(self.button_plan_tasks)
+        self.add_widget(self.button_register_tasks)
         self.add_widget(self.label_machine_time_LF)
         self.add_widget(self.label_machine_time_LC5)
 
@@ -4739,6 +4742,68 @@ class Taskspage_Sidebar(BoxLayout):
 
         self.label_machine_time_LF.text = str(f'Tempo Total LF:\n {return_formatted_time_string(self.total_time_LF)}')
         self.label_machine_time_LC5.text = str(f'Tempo Total LC5:\n {return_formatted_time_string(self.total_time_LC5)}')
+
+    def display_popup_register_tasks(self, *args):
+        any_selected = False
+        for task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
+            if task.is_selected:
+                any_selected = True
+
+        if not any_selected:
+            self.display_popup_warning('Nenhuma tarefa selecionada')
+        else:
+            suggested_date = return_next_weekday(datetime.datetime.now())
+            suggested_date_string = f'{suggested_date.day}/{suggested_date.month}/{suggested_date.year}'
+
+            self.layout_register_tasks = BoxLayout(orientation='vertical')
+            self.layout_register_tasks.add_widget(Label(text='Insere a data do registo (dd/mm/aaaa)'))
+            ti_date = TextInput(text=suggested_date_string, size_hint_y=0.5)
+            self.layout_register_tasks.add_widget(ti_date)
+            self.layout_register_tasks.add_widget(Label(size_hint_y=0.5))
+            self.layout_register_tasks.add_widget(Button(text='OK', background_color=color_light_green, on_press=lambda x: self.register_tasks_excel(ti_date.text)))
+
+            self.pop_register_tasks = Popup(title='Registar Tarefas', content=self.layout_register_tasks, size_hint=(0.3, 0.3))
+            self.pop_register_tasks.open()
+
+    def register_tasks_excel(self, string_date_register, *args):
+        try:
+            df = pd.read_excel(CAMINHO_EXCEL)
+
+            selected_tasks = []
+            counter_part = 1
+
+            for task in production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sideframe.added_tasks:
+                if task.is_selected:
+                    selected_tasks.append(task)
+
+            counter_task = 1
+            for task in selected_tasks:
+                task_name = string_date_register + "_T" + str(counter_task)
+                task_machine = task.machine
+                task_path = task.current_path
+                task_material_name = task.material.split(',')[0].split(' ')[0]
+                task_material_spec = task.material.split(',')[0].split(' ')[1]
+                task_material_thickness = task.material.split(',')[1].split(' ')[1]
+                task_material_owner = task.material.split(',')[1].split(' ')[2]
+
+                for part in task.order_parts_objects:
+                    production_order = 'OP_' + string_date_register + '_P' + str(counter_part)
+
+                    info_row = {'Ordem Produção': production_order, 'Trabalho': task_name, 'Máquina': task_machine, 'Caminho': task_path, 'Cliente': part.client, 'Encomenda': part.order_num,
+                                'Material': task_material_name, 'Liga (acabamento)': task_material_spec, 'Espessura': task_material_thickness,
+                                'Proprietário M.P.': task_material_owner, 'Referência': part.name, 'Quantidade': str(part.quantity)}
+
+                    df = df.append(info_row, ignore_index=True)
+
+                    counter_part += 1
+
+                counter_task += 1
+
+                df.to_excel(CAMINHO_EXCEL, index=False)
+                production_planning.homepage.layout_sidebar.layout_popup_tasks.layout_sidebar.pop_register_tasks.dismiss()
+
+        except PermissionError:
+            self.display_popup_warning("Folha de Excel aberta")
 
 
 class Taskspage(BoxLayout):
@@ -5632,17 +5697,8 @@ class PopupWarningMessage(Popup):
 
 
 if __name__ == '__main__':
-    #TODO Add keyboard functionality to menus (ENTER to validate and TAB to jump to next widget)
-    #TODO Add autofocus and select all to some textinputs
-    #TODO Add loading menus to heavy duty task and calculations
-    #TODO Develop Planning Interface
-    #TODO Develop Productions Interface
-    #TODO Develop Clients Interface
-    #TODO Develop Machines Interface
-    #TODO Develop Consumables
-    #TODO Develop Statistics
-    #TODO Reduce sizes of buttons, especially on the sidebars
-    #TODO Add Tubes as materials
+
+    CAMINHO_EXCEL = "D:/PROJETOS/PROGRAMMING/PROJECTS/PROJETOS PYTHON/Projetos Trabalho/SOFTWARE PLANEAMENTO/REGISTOS/registo.xlsx"
 
     color_dark_gray = convert_rgb_to_kivy_float((128, 128, 128))
     color_light_gray = convert_rgb_to_kivy_float((224, 224, 224))
